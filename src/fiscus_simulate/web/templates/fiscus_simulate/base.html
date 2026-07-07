@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}fiscus_simulate{% endblock %}</title>
+
+  {# Favicons / app icons (generated from ../assets/branding) #}
+  <link rel="icon" href="{{ url_for('static', filename='fiscus_simulate/branding/favicon.ico') }}" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32"
+        href="{{ url_for('static', filename='fiscus_simulate/branding/favicon-32.png') }}">
+  <link rel="icon" type="image/png" sizes="16x16"
+        href="{{ url_for('static', filename='fiscus_simulate/branding/favicon-16.png') }}">
+  <link rel="apple-touch-icon"
+        href="{{ url_for('static', filename='fiscus_simulate/branding/apple-touch-icon.png') }}">
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background:#fff; }
+    .navbar-brand img { height:32px; width:auto; margin-right:.5rem; }
+    .navbar { border-bottom:1px solid #eee; }
+    .container-fluid.main { max-width:1600px; margin:0 auto; }
+    .model-note { font-size:.85rem; }
+  </style>
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg bg-white sticky-top">
+    <div class="container-fluid main">
+      <a class="navbar-brand d-flex align-items-center" href="{{ url_for('simulate.dashboard') }}">
+        <img src="{{ url_for('static', filename='fiscus_simulate/branding/logo-192.png') }}" alt="fiscus_simulate">
+        <span class="fw-semibold">fiscus<span class="text-secondary">_simulate</span></span>
+      </a>
+      <div class="navbar-nav ms-auto">
+        <a class="nav-link active" href="{{ url_for('simulate.dashboard') }}">Dashboard</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container-fluid main py-4">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="container-fluid main text-muted small py-4 border-top">
+    fiscus_simulate v{{ app_version }} &middot; localhost tool &middot;
+    scenario simulation — not a forecast.
+  </footer>
+</body>
+</html>

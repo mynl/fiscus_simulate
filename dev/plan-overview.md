@@ -18,8 +18,8 @@ failure — return-environment vs. sequence risk, scenario discovery — not to 
 
 | Topic | Decision |
 |---|---|
-| **Deployment** | Two separate servers, one shared look. `fiscus_simulate` is a **standalone** Flask app cloning the house style; it never imports `fiscus_project`. `fiscus_project` = factual/high-security; `fiscus_simulate` = no private data, higher compute. |
-| **Cross-platform** | **Hard requirement** — must run on Windows *and* the author's Linux VPS. `pathlib.Path` only; no `C:\` literals; no OS-specific calls in package code; test-portable. |
+| **Deployment** | Two separate servers, one shared look. `fiscus_simulate` is a **standalone** Flask app cloning the house style; it **never imports `fiscus_project`**. Dependency is one-way: **`fiscus_project` may import `fiscus_simulate`**, so this package must stay a clean, importable library. `fiscus_project` = factual/high-security; `fiscus_simulate` = no private data, higher compute. |
+| **Cross-platform** | **Hard requirement** — must run on Windows *and* the author's Linux VPS. `pathlib.Path` only; no `C:\` literals; no OS-specific calls in package code; test-portable. `csv-grid` is installed on the server, so it's a normal dependency (still keep it out of the pure-engine import path). |
 | **Config format** | **YAML** (matches both siblings + house rules), consistent throughout. `pyproject.toml` is the only TOML. |
 | **Package layout** | Mirror `fiscus_project`: engine modules at `src/fiscus_simulate/` top level, web in a `web/` subpackage (`app.py` factory + `routes.py` + `state.py` + `views.py`). |
 | **Config models** | Proposed: **pydantic v2** for typed models + validation + round-trip + schema version. (Alt: dataclasses + hand-written `validate()`. Confirm at Stage 1.) |

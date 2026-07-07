@@ -53,12 +53,12 @@ fiscus_simulate/
     `flask>=3`, `waitress>=3`, `csv-grid`. (numpy/pandas/pyarrow present now so the
     lock is stable even though the engine lands later.)
   - **dev extras:** `pytest>=8`, `ruff>=0.4`.
-  - `[tool.uv.sources]` for `csv-grid` — **confirm the VPS-portable path**; the
-    Windows sibling uses `c:/s/ai/csv-viewer/python`. Cross-platform means this local
-    source path won't resolve on the VPS → likely publish/pin `csv-grid` or make it an
-    optional `[web]` extra so the headless engine installs without it. **Decide at
-    Stage 6; for Stage 1 put csv-grid behind an optional `web` extra** so core stays
-    portable.
+  - `csv-grid` is **installed on the server**, so it's a normal dependency there; the
+    Windows sibling points `[tool.uv.sources]` at a local editable path
+    (`c:/s/ai/csv-viewer/python`) which won't resolve on the VPS. Keep the local
+    editable source **Windows-dev-only** and put `csv-grid` behind an optional `web`
+    extra so a headless engine install never needs it. Keep it out of the pure-engine
+    import path regardless.
 
 ### [config] typed models — the substance of Stage 1
 `models.py`, pydantic v2 (`BaseModel`, `model_config = ConfigDict(extra="forbid")`),

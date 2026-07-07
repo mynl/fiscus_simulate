@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fiscus-simulate"
+version = "1.0.0"
+description = "Retirement cash-flow and asset Monte-Carlo simulation for a two-person household."
+requires-python = ">=3.13"
+authors = [{ name = "Stephen J. Mildenhall" }]
+dependencies = [
+    "numpy>=1.26",        # core engine arrays (lands with the engine, Stage 2)
+    "pandas>=2.0",        # config/summary/output boundaries only
+    "pyarrow>=15",        # parquet summaries (Stage 5)
+    "pyyaml>=6",          # human-readable config
+    "pydantic>=2",        # typed, validated, round-trippable config models
+]
+
+[project.optional-dependencies]
+# Web layer is optional so the pure engine installs headless (e.g. compute node / VPS).
+# csv-grid is installed on the server; on Windows dev it is the author's local package.
+web = ["flask>=3", "waitress>=3", "csv-grid"]
+# dev pulls flask/waitress (app-boot test) but NOT csv-grid (unused until Stage 6).
+dev = ["pytest>=8", "ruff>=0.4", "flask>=3", "waitress>=3"]
+
+[project.scripts]
+fiscus-simulate = "fiscus_simulate.web.app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fiscus_simulate"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

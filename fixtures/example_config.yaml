@@ -1,0 +1,104 @@
+schema_version: '1.0'
+household:
+  people:
+  - role: A
+    current_age: 60.0
+    pension_start_age: 67.0
+    annual_real_pension: 11000.0
+    pension_end_age: null
+  - role: B
+    current_age: 58.0
+    pension_start_age: 67.0
+    annual_real_pension: 9000.0
+    pension_end_age: null
+  start_date: '2026-03-31'
+  horizon_years: 40
+  quarter_convention: calendar_qend
+spending:
+  total_annual_real: 60000.0
+  category_pct:
+    housing: 30.0
+    core: 30.0
+    non_core: 15.0
+    travel: 10.0
+    medical: 10.0
+    tax: 5.0
+  mode: planned
+inflation:
+  overall_mean: 0.025
+  overall_vol: 0.0
+  category_excess_mean:
+    housing: 0.0
+    core: 0.0
+    non_core: 0.0
+    travel: 0.0
+    medical: 0.02
+    tax: 0.0
+  category_excess_vol: null
+balances:
+  balances:
+    taxable:
+      stocks: 300000.0
+      bonds: 100000.0
+      cash: 50000.0
+    tax_deferred:
+      stocks: 400000.0
+      bonds: 200000.0
+      cash: 0.0
+    tax_free:
+      stocks: 150000.0
+      bonds: 50000.0
+      cash: 0.0
+return_generator:
+  kind: gbm
+  real_return:
+    stocks: 0.05
+    bonds: 0.015
+    cash: 0.0
+  volatility:
+    stocks: 0.17
+    bonds: 0.06
+    cash: 0.01
+  income_yield:
+    stocks: 0.02
+    bonds: 0.03
+    cash: 0.01
+  correlations:
+  - - 1.0
+    - 0.2
+    - 0.0
+  - - 0.2
+    - 1.0
+    - 0.1
+  - - 0.0
+    - 0.1
+    - 1.0
+income_streams:
+- owner: A
+  annual_real: 11000.0
+  start_age: 67.0
+  end_age: null
+  inflation_linked: true
+  taxable_fraction: 1.0
+- owner: B
+  annual_real: 9000.0
+  start_age: 67.0
+  end_age: null
+  inflation_linked: true
+  taxable_fraction: 1.0
+tax_rates:
+  tax_deferred_withdrawal: 0.2
+  interest: 0.2
+  dividend: 0.15
+  realized_gain: 0.15
+  other_pension: 0.2
+withdrawal_policy:
+  kind: proportional
+rebalancing_policy:
+  kind: none
+simulation:
+  n_scenarios: 10000
+  seed: 12345
+  chunk_size: 10000
+  persist_summary: true
+  persist_sample_paths: 0
