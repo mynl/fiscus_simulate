@@ -1,9 +1,198 @@
 """Quarterly retirement simulation engine (vectorized NumPy).
 
-Stage 2 (deterministic engine) and Stage 4 (vectorized multi-path) land here. This
-module must never import Flask. The web layer reaches the engine only via
-:mod:`fiscus_simulate.service`.
+Stage 2: a deterministic single-path engine (scenario axis present, size 1) that becomes
+the correctness backbone. The period loop is Python (160 quarters); everything inside is
+vectorized over the scenario axis so Stage 4 scales to many paths unchanged. This module
+never imports Flask; the web layer reaches it via :mod:`fiscus_simulate.service`.
 
-Placeholder for Stage 2 — see ``dev/plan-overview.md``.
+Order of operations and the reconciliation identity are documented in
+``dev/plan-1.1-stage2-engine.md`` (income-first model). The identity, checked by tests:
+
+    W_end = W_begin + external_income + investment_income + capital_return
+            - spending - tax
 """
 from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+
+from .assets import BONDS, CASH, STOCKS, TAXABLE, proportional_sale
+from .income import build_external_income
+from .models import ACCOUNT_TYPES, ASSET_CLASSES, RunConfig
+from .returns.deterministic import ReturnsBundle, build_deterministic_returns
+from .spending import build_spending_path
+from .tax import income_tax
+
+
+@dataclass
+class EngineResult:
+    """Per-period arrays (S, T) and per-path outcome measures from a simulation.
+
+    Notes
+    -----
+    Arrays that are deterministic across scenarios (spending, external income) are stored
+    once as ``(T,)``. Scenario-varying arrays are ``(S, T)``.
+    """
+
+    config: RunConfig
+    net_worth: np.ndarray          # (S, T) end-of-period net worth
+    spending: np.ndarray           # (T,) planned nominal spending
+    spending_funded: np.ndarray    # (S, T) actually-funded spending (< planned on failure)
+    external_income: np.ndarray    # (T,)
+    investment_income: np.ndarray  # (S, T)
+    capital_return: np.ndarray     # (S, T)
+    tax_income: np.ndarray         # (S, T)
+    tax_sale: np.ndarray           # (S, T)
+    sales_gross: np.ndarray        # (S, T)
+    realized_gain: np.ndarray      # (S, T)
+    funded: np.ndarray             # (S, T) bool
+
+    # --- per-path outcome measures (computed in __post_init__) ---
+    first_failure_period: np.ndarray = None  # type: ignore[assignment]
+    years_funded: np.ndarray = None          # type: ignore[assignment]
+    min_net_worth: np.ndarray = None         # type: ignore[assignment]
+    terminal_net_worth: np.ndarray = None    # type: ignore[assignment]
+    total_tax: np.ndarray = None             # type: ignore[assignment]
+    total_sales: np.ndarray = None           # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        S, T = self.net_worth.shape
+        not_funded = ~self.funded
+        any_fail = not_funded.any(axis=1)
+        first = np.where(any_fail, not_funded.argmax(axis=1), T)
+        self.first_failure_period = np.where(any_fail, first, -1)
+        self.years_funded = first / 4.0
+        self.min_net_worth = self.net_worth.min(axis=1)
+        self.terminal_net_worth = self.net_worth[:, -1]
+        self.total_tax = (self.tax_income + self.tax_sale).sum(axis=1)
+        self.total_sales = self.sales_gross.sum(axis=1)
+
+    @property
+    def tax_total(self) -> np.ndarray:
+        """Per-period total tax (income + sale), ``(S, T)``."""
+        return self.tax_income + self.tax_sale
+
+    def success(self, terminal_threshold: float | None = None) -> dict[str, np.ndarray]:
+        """Boolean success measures per path (criteria 1-4; several coincide in V1)."""
+        thr = self.config.simulation.terminal_threshold if terminal_threshold is None \
+            else terminal_threshold
+        all_funded = self.funded.all(axis=1)
+        return {
+            "portfolio_non_negative": (self.net_worth >= -1e-6).all(axis=1),
+            "essential_funded": all_funded,       # coincides with all-funded in V1
+            "all_planned_funded": all_funded,
+            "terminal_above_threshold": self.terminal_net_worth > thr,
+        }
+
+
+def simulate(config: RunConfig, returns: ReturnsBundle | None = None,
+             n_scenarios: int = 1) -> EngineResult:
+    """Run the quarterly engine.
+
+    Parameters
+    ----------
+    config : RunConfig
+        The run configuration (single source of truth).
+    returns : ReturnsBundle, optional
+        Per-period return arrays. Defaults to the deterministic provider (Stage 2). Its
+        ``(T, n_assets)`` arrays are shared across scenarios (broadcast over ``S``).
+    n_scenarios : int
+        Scenario-axis size. Stage 2 default 1; the deterministic returns make all
+        scenarios identical.
+    """
+    if returns is None:
+        returns = build_deterministic_returns(config)
+
+    S = n_scenarios
+    T = config.household.n_periods
+    n_acct, n_asset = len(ACCOUNT_TYPES), len(ASSET_CLASSES)
+    td_rate = config.tax_rates.tax_deferred_withdrawal
+    gain_rate = config.tax_rates.realized_gain
+
+    # Initial state (broadcast the single config over S).
+    B = np.zeros((S, n_acct, n_asset))
+    for ai, acct in enumerate(ACCOUNT_TYPES):
+        for si, asset in enumerate(ASSET_CLASSES):
+            B[:, ai, si] = config.balances.balances[acct][asset]
+    basis0 = config.balances.resolved_taxable_basis()
+    basis = np.tile(np.array([basis0[a] for a in ASSET_CLASSES]), (S, 1))
+
+    spend = build_spending_path(config)
+    inc = build_external_income(config, returns.overall_inflation_q)
+
+    # Output buffers
+    net_worth = np.zeros((S, T))
+    spending_funded_a = np.zeros((S, T))
+    inv_income_a = np.zeros((S, T))
+    cap_return_a = np.zeros((S, T))
+    tax_income_a = np.zeros((S, T))
+    tax_sale_a = np.zeros((S, T))
+    sales_gross_a = np.zeros((S, T))
+    realized_gain_a = np.zeros((S, T))
+    funded_a = np.zeros((S, T), dtype=bool)
+
+    for t in range(T):
+        yld_t = returns.income_yield[t]        # (n_asset,)
+        cap_t = returns.capital_return[t]      # (n_asset,)
+
+        # 4. Investment income on beginning balances, paid into each account's cash.
+        income_cell = B * yld_t[None, None, :]         # (S, acct, asset)
+        acct_income = income_cell.sum(axis=2)          # (S, acct)
+        inv_income = income_cell.sum(axis=(1, 2))      # (S,)
+        # Taxable-account income split (from BEGINNING balances) for tax.
+        interest_taxable = B[:, TAXABLE, BONDS] * yld_t[BONDS] + B[:, TAXABLE, CASH] * yld_t[CASH]
+        dividend_taxable = B[:, TAXABLE, STOCKS] * yld_t[STOCKS]
+
+        B[:, :, CASH] += acct_income                   # income becomes cash in-account
+
+        # 5. Income tax (accrual).
+        tax_inc = income_tax(interest_taxable, dividend_taxable, inc.taxable[t], config.tax_rates)
+
+        # 6. Fund from the spendable pool (external + taxable cash) first.
+        taxable_cash = B[:, TAXABLE, CASH]
+        pool = inc.total[t] + taxable_cash
+        need = spend.total[t] + tax_inc
+        B[:, TAXABLE, CASH] = np.maximum(pool - need, 0.0)   # surplus accumulates as cash
+        delta = np.maximum(need - pool, 0.0)                 # shortfall to raise by selling
+
+        # 7-8. Proportional sale with analytic gross-up (no-op where delta == 0).
+        sale = proportional_sale(B, basis, delta, td_rate, gain_rate)
+        B, basis = sale.balances, sale.basis
+
+        # Actual spending funded: full plan when funded, else whatever the exhausted
+        # resources cover (the shortfall is the failure). Keeps the reconciliation exact.
+        net_sale = sale.gross - sale.tax
+        spending_funded = np.where(
+            sale.funded, spend.total[t], np.maximum(pool + net_sale - tax_inc, 0.0)
+        )
+
+        # 9. Apply capital returns to end-of-period balances.
+        cap_amt = (B * cap_t[None, None, :]).sum(axis=(1, 2))
+        B *= 1.0 + cap_t[None, None, :]
+
+        # 10. Record.
+        net_worth[:, t] = B.sum(axis=(1, 2))
+        spending_funded_a[:, t] = spending_funded
+        inv_income_a[:, t] = inv_income
+        cap_return_a[:, t] = cap_amt
+        tax_income_a[:, t] = tax_inc
+        tax_sale_a[:, t] = sale.tax
+        sales_gross_a[:, t] = sale.gross
+        realized_gain_a[:, t] = sale.realized_gain
+        funded_a[:, t] = sale.funded
+
+    return EngineResult(
+        config=config,
+        net_worth=net_worth,
+        spending=spend.total,
+        spending_funded=spending_funded_a,
+        external_income=inc.total,
+        investment_income=inv_income_a,
+        capital_return=cap_return_a,
+        tax_income=tax_income_a,
+        tax_sale=tax_sale_a,
+        sales_gross=sales_gross_a,
+        realized_gain=realized_gain_a,
+        funded=funded_a,
+    )

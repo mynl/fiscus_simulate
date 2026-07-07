@@ -49,6 +49,10 @@ balances:
       stocks: 150000.0
       bonds: 50000.0
       cash: 0.0
+  taxable_basis:
+    stocks: 200000.0
+    bonds: 90000.0
+    cash: 50000.0
 return_generator:
   kind: gbm
   real_return:
@@ -100,5 +104,6 @@ simulation:
   n_scenarios: 10000
   seed: 12345
   chunk_size: 10000
+  terminal_threshold: 0.0
   persist_summary: true
   persist_sample_paths: 0

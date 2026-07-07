@@ -122,6 +122,22 @@ def test_balances_helpers():
     assert abs(sum(by_asset.values()) - cfg.balances.total()) < 1e-6
 
 
+def test_taxable_basis_cannot_exceed_market():
+    cfg = RunConfig.default()
+    data = cfg.model_dump(mode="json")
+    data["balances"]["taxable_basis"]["stocks"] = 10_000_000  # > market
+    with pytest.raises(ValidationError, match="exceeds market value"):
+        RunConfig.model_validate(data)
+
+
+def test_resolved_basis_defaults_to_market():
+    cfg = RunConfig.default()
+    cfg.balances.taxable_basis = None
+    resolved = cfg.balances.resolved_taxable_basis()
+    taxable = cfg.balances.balances[AccountType.taxable]
+    assert resolved[AssetClass.stocks] == taxable[AssetClass.stocks]
+
+
 def test_clone_is_independent():
     cfg = RunConfig.default()
     twin = cfg.clone()

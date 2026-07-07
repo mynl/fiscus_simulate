@@ -177,9 +177,16 @@ class InflationAssumptions(_Model):
 
 # -------------------------------------------------------------------------- assets
 class AccountBalances(_Model):
-    """The ``account_type x asset_class -> initial balance`` matrix."""
+    """The ``account_type x asset_class -> initial balance`` matrix, plus taxable basis.
+
+    ``taxable_basis`` is the initial cost basis of the **taxable** account's holdings, so
+    a sale can be split into gain vs. return of principal. Only the taxable account needs
+    it (tax-deferred is taxed on full withdrawal; tax-free is never taxed). If omitted for
+    an asset, basis defaults to market value (no embedded gain). ``cash`` never has a gain.
+    """
 
     balances: dict[AccountType, dict[AssetClass, float]]
+    taxable_basis: dict[AssetClass, float] | None = None
 
     @field_validator("balances")
     @classmethod
@@ -200,6 +207,26 @@ class AccountBalances(_Model):
                 if bal < 0:
                     raise ValueError(f"balance {acct.value}/{asset.value} is negative: {bal}")
         return v
+
+    @model_validator(mode="after")
+    def _basis_within_market(self) -> AccountBalances:
+        if self.taxable_basis is None:
+            return self
+        taxable = self.balances[AccountType.taxable]
+        for asset, basis in self.taxable_basis.items():
+            if basis < 0:
+                raise ValueError(f"taxable_basis[{asset.value}] is negative: {basis}")
+            if basis > taxable[asset] + 1e-6:
+                raise ValueError(
+                    f"taxable_basis[{asset.value}] {basis} exceeds market value {taxable[asset]}"
+                )
+        return self
+
+    def resolved_taxable_basis(self) -> dict[AssetClass, float]:
+        """Taxable-account basis by asset, defaulting missing entries to market value."""
+        taxable = self.balances[AccountType.taxable]
+        given = self.taxable_basis or {}
+        return {asset: float(given.get(asset, taxable[asset])) for asset in ASSET_CLASSES}
 
     def total(self) -> float:
         """Aggregate balance across all account types and asset classes."""
@@ -314,6 +341,7 @@ class SimulationConfig(_Model):
     n_scenarios: int = Field(default=10_000, gt=0)
     seed: int = 12345
     chunk_size: int = Field(default=10_000, gt=0)
+    terminal_threshold: float = Field(default=0.0, ge=0)  # success criterion 4 floor
     persist_summary: bool = True
     persist_sample_paths: int = Field(default=0, ge=0)  # optional bounded path sample
 
@@ -400,7 +428,11 @@ class RunConfig(_Model):
                     AccountType.tax_free: {
                         AssetClass.stocks: 150_000, AssetClass.bonds: 50_000,
                         AssetClass.cash: 0},
-                }
+                },
+                # Embedded gains in the taxable account so example runs exercise gains tax.
+                taxable_basis={
+                    AssetClass.stocks: 200_000, AssetClass.bonds: 90_000,
+                    AssetClass.cash: 50_000},
             ),
             return_generator=ReturnGeneratorConfig(
                 real_return={AssetClass.stocks: 0.05, AssetClass.bonds: 0.015,

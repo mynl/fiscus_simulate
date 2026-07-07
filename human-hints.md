@@ -4,6 +4,18 @@ High-level log of what we discuss and decide. Newest first.
 
 ## 2026-07-07
 
+- **Stage 2 built (v1.1.0): deterministic quarterly engine.** Income-first model
+  (Steve's correction — spend div/int first, sell on shortfall, accumulate excess cash,
+  no rebalancing). Analytic sale gross-up `G=Δ/(1−τ)`. Initial taxable cost basis added
+  to config. Reconciliation identity holds every period (uses *funded* spending, so
+  exhaustion shows as a shortfall = the failure). 31 tests green. Sanity: default 40y run
+  survives, ends ~£167k from £1.25M.
+- **Help offcanvas (v1.0.1):** top-right `?`, terse per-page content, version in its
+  footer (off the page). `.gitattributes` LF normalization.
+- **Stage 2 conventions confirmed:** spendable = external + taxable-account int/div only
+  (tax-free/deferred income stays inside until a sale); geometric qtr conversion,
+  yield/4; terminal threshold default 0. Account-aware income tax (taxable only).
+
 - **Stage 1 built (v1.0.0):** package skeleton, pydantic-v2 `RunConfig` with
   validation + YAML round-trip, minimal Flask app that boots, branding wired, tests.
   No engine yet (Stage 2 next).

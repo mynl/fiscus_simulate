@@ -3,6 +3,36 @@
 All notable changes to `fiscus_simulate`. Semantic versioning from 1.0.0; each build
 stage bumps the minor. Newest first.
 
+## 1.1.0 — 2026-07-07
+
+Stage 2: deterministic quarterly engine.
+
+### Added
+- `engine.py` — vectorized quarterly engine (scenario axis present, size 1 in Stage 2)
+  implementing the **income-first order of operations**: spend investment income first,
+  cover shortfalls by a proportional asset sale with an **analytic tax gross-up**
+  (`G = Δ/(1−τ)`, no iteration), accumulate surplus as cash, apply capital returns at
+  period end. `EngineResult` carries per-period arrays and per-path outcome measures
+  (first-failure period, years funded, min/terminal net worth, totals, success criteria).
+- `spending.py`, `income.py`, `assets.py`, `tax.py` — spending path, external income,
+  proportional-sale mechanics + cost-basis roll-forward, flat income tax.
+- `returns/deterministic.py` — constant return provider (Stage 3 swaps in the generator
+  behind the same array contract).
+- `rates.py` — annual↔quarterly conversions (geometric returns/inflation, yield/4) and
+  the real→nominal identity.
+- Config: **initial taxable cost basis** (`AccountBalances.taxable_basis`) so sales split
+  gain vs. principal; `SimulationConfig.terminal_threshold` (success criterion 4).
+
+### Tests
+- Reconciliation identity `W_end = W_begin + income + return − funded_spending − tax`
+  every period; hand-verifiable micro-cases (pure drawdown, surplus accumulation,
+  exhaustion/first-failure); gross-up unit tests (tax-deferred, taxable gain, unfunded);
+  rate conversions; basis validation. 31 tests green.
+
+### Notes
+- Reconciliation uses **funded** spending: when the portfolio is exhausted, actual
+  spending falls below plan and the gap is the recorded failure (V1 exposes failure).
+
 ## 1.0.1 — 2026-07-07
 
 ### Added
