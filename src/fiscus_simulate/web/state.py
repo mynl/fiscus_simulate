@@ -35,6 +35,12 @@ class AppState:
         """Directory holding per-run subdirectories (created lazily on first use)."""
         return self.state_dir / "simulation_runs"
 
+    @property
+    def configs_dir(self) -> Path:
+        """Directory holding named saved configurations (created lazily on first use)."""
+        return self.state_dir / "configs"
+
     def ensure_dirs(self) -> None:
         """Create the app-state directories if they do not yet exist."""
         self.runs_dir.mkdir(parents=True, exist_ok=True)
+        self.configs_dir.mkdir(parents=True, exist_ok=True)

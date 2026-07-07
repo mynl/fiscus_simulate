@@ -1,0 +1,63 @@
+{% extends "fiscus_simulate/base.html" %}
+{% block title %}{{ name or 'New' }} &middot; Configuration &middot; fiscus_simulate{% endblock %}
+
+{% block help %}
+  <p class="text-muted small mb-2"><strong>Configuration editor.</strong> Edit the run
+  configuration as YAML. Saving validates it against the typed model — field-level
+  errors are listed above the editor, and nothing is written until it validates.</p>
+  <p class="text-muted small mb-0">V1 is a structured YAML editor by design; the matrix
+  sections (balances, correlations) are far clearer here than as form widgets.</p>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center mb-3">
+  <h1 class="h3 mb-0">{% if is_saved %}Edit configuration{% else %}New configuration{% endif %}</h1>
+  <a class="btn btn-outline-secondary btn-sm ms-auto" href="{{ url_for('simulate.dashboard') }}">
+    <i class="bi bi-arrow-left"></i> Dashboard</a>
+</div>
+
+{% if errors %}
+  <div class="alert alert-danger" role="alert">
+    <strong>Not saved — {{ errors|length }} problem{{ 's' if errors|length != 1 }}:</strong>
+    <ul class="mb-0 mt-1">{% for e in errors %}<li><code>{{ e }}</code></li>{% endfor %}</ul>
+  </div>
+{% endif %}
+
+<form method="post" action="{{ url_for('simulate.config_save') }}">
+  <div class="row g-2 align-items-end mb-2">
+    <div class="col-sm-6 col-md-4">
+      <label class="form-label small mb-1">Name</label>
+      <input class="form-control" type="text" name="name" value="{{ name }}"
+             placeholder="e.g. base-case" pattern="[A-Za-z0-9][A-Za-z0-9_\- ]*"
+             {{ 'readonly' if is_saved else 'autofocus' }}>
+      <div class="form-text">Letters, digits, dashes/underscores.</div>
+    </div>
+    <div class="col-sm-6 col-md-8 d-flex gap-2">
+      <button class="btn btn-primary" type="submit"><i class="bi bi-save"></i> Save</button>
+      {% if is_saved %}
+        <button class="btn btn-success js-run" type="submit"
+                formaction="{{ url_for('simulate.config_run', name=name) }}" formmethod="post">
+          <i class="bi bi-play-fill"></i> Run</button>
+        <button class="btn btn-outline-danger ms-auto" type="submit"
+                formaction="{{ url_for('simulate.config_delete', name=name) }}" formmethod="post"
+                onclick="return confirm('Delete configuration {{ name }}?');">
+          <i class="bi bi-trash"></i> Delete</button>
+      {% endif %}
+    </div>
+  </div>
+
+  <textarea class="form-control font-monospace" name="yaml" rows="28" spellcheck="false"
+            style="font-size:.85rem;">{{ yaml_text }}</textarea>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Run may kick off a long background job — disable to prevent a duplicate submit.
+  document.querySelectorAll('.js-run').forEach(function (b) {
+    b.addEventListener('click', function () {
+      setTimeout(function () { b.disabled = true; b.innerHTML = 'Running…'; }, 0);
+    });
+  });
+</script>
+{% endblock %}

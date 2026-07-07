@@ -2,28 +2,84 @@
 {% block title %}Dashboard &middot; fiscus_simulate{% endblock %}
 
 {% block help %}
-  <p class="text-muted small mb-2"><strong>Dashboard.</strong> Landing page. Will show
-  configured plans, recent runs, success rate and median terminal wealth once the run
-  workflow lands (Stage 6–7).</p>
+  <p class="text-muted small mb-2"><strong>Dashboard.</strong> Your saved
+  configurations and most recent runs. Create or open a configuration to edit its YAML,
+  then launch a simulation. Runs are persisted under the app-state directory.</p>
   <p class="text-muted small mb-0">Nothing here reduces spending to flatter results —
   V1 sticks to plan and exposes failure honestly.</p>
 {% endblock %}
 
 {% block content %}
-<h1 class="h3 mb-3">Simulation dashboard</h1>
+<div class="d-flex align-items-center mb-3">
+  <h1 class="h3 mb-0">Simulation dashboard</h1>
+  <a class="btn btn-primary ms-auto" href="{{ url_for('simulate.config_new') }}">
+    <i class="bi bi-plus-lg"></i> New configuration</a>
+</div>
 
-{% if runs %}
-  {# Stage 7 fills this with recent runs, success rate, median terminal wealth. #}
-{% else %}
-  <div class="alert alert-light border" role="alert">
-    No simulation runs yet. Configuration and run workflow arrive in Stage 6.
+<div class="row g-4">
+  <div class="col-lg-6">
+    <h2 class="h5">Saved configurations</h2>
+    {% if saved %}
+      <div class="list-group">
+        {% for name in saved %}
+          <div class="list-group-item d-flex align-items-center">
+            <a class="flex-grow-1 text-decoration-none" href="{{ url_for('simulate.config_edit', name=name) }}">
+              <i class="bi bi-file-earmark-text me-1"></i>{{ name }}</a>
+            <form method="post" action="{{ url_for('simulate.config_run', name=name) }}" class="d-inline js-run-form">
+              <button class="btn btn-sm btn-success" type="submit"><i class="bi bi-play-fill"></i> Run</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="alert alert-light border">No saved configurations yet.
+        <a href="{{ url_for('simulate.config_new') }}">Create one.</a></div>
+    {% endif %}
   </div>
-{% endif %}
 
-<div class="alert alert-warning model-note" role="alert">
+  <div class="col-lg-6">
+    <div class="d-flex align-items-center mb-2">
+      <h2 class="h5 mb-0">Recent runs</h2>
+      <a class="ms-auto small" href="{{ url_for('simulate.runs_list') }}">All runs &rarr;</a>
+    </div>
+    {% if runs %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead><tr><th>Run</th><th class="text-end">Scenarios</th><th class="text-end">Success</th></tr></thead>
+          <tbody>
+            {% for r in runs %}
+              <tr>
+                <td><a href="{{ url_for('simulate.run_detail', run_id=r.run_id) }}">{{ r.run_id }}</a>
+                  {% if r.pinned %}<i class="bi bi-pin-angle-fill text-secondary ms-1" title="pinned"></i>{% endif %}</td>
+                <td class="text-end">{{ "{:,}".format(r.n_scenarios) }}</td>
+                <td class="text-end">{{ "%.1f%%"|format(100 * r.overall_success_rate) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="alert alert-light border">No runs yet. Launch one from a saved configuration.</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="alert alert-warning model-note mt-4" role="alert">
   <strong>Model limitations (V1).</strong> Taxes are simplified flat-rate
   approximations; mortality and morbidity are not simulated; the spending mix is fixed;
   withdrawals are proportional; there is no rebalancing; the return generator is
   stylized. Results describe possible futures, not a single probability of success.
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Prevent duplicate submits: disable the Run button once clicked.
+  document.querySelectorAll('.js-run-form').forEach(function (f) {
+    f.addEventListener('submit', function () {
+      var b = f.querySelector('button[type=submit]');
+      if (b) { b.disabled = true; b.innerHTML = 'Running…'; }
+    });
+  });
+</script>
 {% endblock %}

@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import secrets
 
 from flask import Flask
 
+from .jobs import JobRegistry
 from .state import AppState
 
 
@@ -24,6 +26,10 @@ def create_app(state: AppState | None = None) -> Flask:
         static_url_path="/static",
     )
     app.config["APP_STATE"] = state or AppState()
+    app.config["JOBS"] = JobRegistry()
+    # Per-process key: flash messages sign a session cookie. Localhost, single user, no
+    # persistent sessions — a fresh random key each boot is sufficient.
+    app.secret_key = secrets.token_hex(16)
 
     from . import routes  # noqa: F401  (side-effect: registers the blueprint)
 

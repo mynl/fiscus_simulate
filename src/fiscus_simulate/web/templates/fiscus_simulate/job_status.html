@@ -1,0 +1,53 @@
+{% extends "fiscus_simulate/base.html" %}
+{% block title %}Running &middot; fiscus_simulate{% endblock %}
+
+{% block help %}
+  <p class="text-muted small mb-0">A simulation is running. Large runs (more than the
+  sync threshold) execute in a background thread; this page polls until it finishes and
+  then shows the result.</p>
+{% endblock %}
+
+{% block content %}
+<h1 class="h3 mb-3">Running simulation</h1>
+
+<div class="card">
+  <div class="card-body">
+    <p class="mb-1">Configuration: <strong>{{ job.config_name }}</strong></p>
+    <p class="mb-3 text-muted">{{ "{:,}".format(job.n_scenarios) }} scenarios</p>
+
+    <div id="running">
+      <div class="d-flex align-items-center gap-2">
+        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+        <span id="state-label">Starting…</span>
+      </div>
+    </div>
+
+    <div id="failed" class="alert alert-danger mt-3 d-none">
+      <strong>Run failed.</strong> <span id="error-msg"></span>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var statusUrl = "{{ url_for('simulate.job_status', job_id=job.job_id) }}";
+  var runBase = "{{ url_for('simulate.run_detail', run_id='__RID__') }}";
+  function poll() {
+    fetch(statusUrl).then(function (r) { return r.json(); }).then(function (j) {
+      document.getElementById('state-label').textContent =
+        j.state.charAt(0).toUpperCase() + j.state.slice(1) + '…';
+      if (j.state === 'complete' && j.run_id) {
+        window.location = runBase.replace('__RID__', j.run_id);
+      } else if (j.state === 'failed') {
+        document.getElementById('running').classList.add('d-none');
+        document.getElementById('error-msg').textContent = j.error || 'unknown error';
+        document.getElementById('failed').classList.remove('d-none');
+      } else {
+        setTimeout(poll, 1000);
+      }
+    }).catch(function () { setTimeout(poll, 2000); });
+  }
+  poll();
+</script>
+{% endblock %}

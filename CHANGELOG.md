@@ -3,6 +3,39 @@
 All notable changes to `fiscus_simulate`. Semantic versioning from 1.0.0; each build
 stage bumps the minor. Newest first.
 
+## 1.5.0 — 2026-07-07
+
+Stage 6: web configuration workflow — drive a persisted simulation from the browser.
+
+### Added
+- **Config editor** (`web/routes.py` + `config_edit.html`): a YAML editor seeded from
+  `RunConfig.default()`, validated server-side via `config.from_yaml_str`. Field-level
+  pydantic errors render inline (`views.format_config_error`); nothing is written until
+  it validates — malformed YAML or an invalid config re-renders, never a 500.
+- **Named saved-config store** (`web/configs.py`): configs live at
+  `~/.fiscus_simulate/configs/<name>.yaml`; names are slugified + validated to a
+  filesystem-safe form. `AppState.configs_dir` (created lazily).
+- **Run launcher** (`web/jobs.py`): a browser-launched run persists via
+  `run_simulation(persist=True)`. Small runs (≤ `SYNC_THRESHOLD` = 20,000 scenarios)
+  execute inline; larger ones run in a **daemon thread** with a polled status page
+  (`job_status.html`) so the UI never wedges on a ~22 s 100k run. The `JobRegistry`
+  refuses a second in-flight run for the same config (duplicate-submit protection,
+  reinforced by a disabled submit button).
+- **Views**: dashboard now lists saved configs + recent runs; `/runs` list; a minimal
+  `/runs/<run_id>` view (reproducibility metadata + summary metrics + the V1
+  simplifications note). Full funnel/charts remain Stage 7.
+- Flash messaging (per-process session key) for save/delete feedback.
+
+### Notes
+- csv-grid tables deferred to Stage 7 (config pages are forms, not tables); Stage 6 uses
+  plain Bootstrap tables. Cross-site nav to `fiscus_project` still parked.
+
+### Tests
+- Editor round-trip; slugified names; invalid-YAML and validation-error re-render
+  (no 500); empty-name rejected; delete. Run launch persists a run and views it;
+  job-view redirects to the completed run; missing-config 404; registry refuses a
+  duplicate in-flight job. All against an injected temp state dir. 63 tests green.
+
 ## 1.4.0 — 2026-07-07
 
 Stage 5: persistence & reproducibility.

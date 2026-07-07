@@ -1,0 +1,59 @@
+{% extends "fiscus_simulate/base.html" %}
+{% block title %}{{ run.run_id }} &middot; Run &middot; fiscus_simulate{% endblock %}
+
+{% block help %}
+  <p class="text-muted small mb-2"><strong>Run view (Stage 6).</strong> Reproducibility
+  metadata and the summary metrics for one persisted run — enough to confirm it
+  completed and is stored.</p>
+  <p class="text-muted small mb-0">The net-worth funnel, terminal-wealth distribution and
+  failure-timing charts land in Stage 7.</p>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center mb-3">
+  <h1 class="h3 mb-0">Run <span class="text-secondary">{{ run.run_id }}</span></h1>
+  <a class="btn btn-outline-secondary btn-sm ms-auto" href="{{ url_for('simulate.runs_list') }}">
+    <i class="bi bi-arrow-left"></i> Runs</a>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <h2 class="h5">Reproducibility</h2>
+    <table class="table table-sm">
+      <tbody>
+        {% for key in ['created', 'seed', 'generator', 'n_scenarios', 'horizon_years',
+                       'runtime_s', 'status', 'package_version', 'python_version',
+                       'git_commit', 'summary_checksum'] %}
+          {% if key in metadata %}
+            <tr><th class="text-nowrap pe-3">{{ key }}</th>
+              <td class="font-monospace small">{{ metadata[key] }}</td></tr>
+          {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="col-lg-7">
+    <h2 class="h5">Summary metrics</h2>
+    <table class="table table-sm">
+      <thead><tr><th>Metric</th><th class="text-end">Value</th></tr></thead>
+      <tbody>
+        {% for metric, value in metrics %}
+          <tr><td class="font-monospace small">{{ metric }}</td>
+            <td class="text-end">
+              {% if 'rate' in metric %}{{ "%.1f%%"|format(100 * value) }}
+              {% elif value == value|round %}{{ "{:,.0f}".format(value) }}
+              {% else %}{{ "{:,.2f}".format(value) }}{% endif %}
+            </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="alert alert-warning model-note mt-3" role="alert">
+  <strong>Model limitations (V1).</strong> Flat-rate taxes; no mortality/morbidity; fixed
+  spending mix; proportional withdrawals; no rebalancing; stylized return generator.
+  A run is a set of possible futures, not a single probability of success.
+</div>
+{% endblock %}

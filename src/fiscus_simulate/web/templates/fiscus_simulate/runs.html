@@ -1,0 +1,40 @@
+{% extends "fiscus_simulate/base.html" %}
+{% block title %}Runs &middot; fiscus_simulate{% endblock %}
+
+{% block help %}
+  <p class="text-muted small mb-0">All persisted runs, newest first. Each row links to
+  its run view. Full charts and the net-worth funnel arrive in Stage 7.</p>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center mb-3">
+  <h1 class="h3 mb-0">Runs</h1>
+  <a class="btn btn-outline-secondary btn-sm ms-auto" href="{{ url_for('simulate.dashboard') }}">
+    <i class="bi bi-arrow-left"></i> Dashboard</a>
+</div>
+
+{% if runs %}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead><tr>
+        <th>Run</th><th>Created</th><th class="text-end">Scenarios</th>
+        <th class="text-end">Success</th><th class="text-end">Size</th>
+      </tr></thead>
+      <tbody>
+        {% for r in runs %}
+          <tr>
+            <td><a href="{{ url_for('simulate.run_detail', run_id=r.run_id) }}">{{ r.run_id }}</a>
+              {% if r.pinned %}<i class="bi bi-pin-angle-fill text-secondary ms-1" title="pinned"></i>{% endif %}</td>
+            <td class="text-muted small">{{ r.created }}</td>
+            <td class="text-end">{{ "{:,}".format(r.n_scenarios) }}</td>
+            <td class="text-end">{{ "%.1f%%"|format(100 * r.overall_success_rate) }}</td>
+            <td class="text-end text-muted">{{ "{:,}".format((r.size_bytes / 1024)|round|int) }} KB</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="alert alert-light border">No runs yet.</div>
+{% endif %}
+{% endblock %}
