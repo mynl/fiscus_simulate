@@ -1,0 +1,76 @@
+# ============================================================================
+# fiscus .gitignore — SECURITY CRITICAL
+# This repo must NEVER contain real financial data. See CLAUDE.md "Data firewall".
+# Real data lives OUTSIDE the repo (FISCUS_DATA_ROOT). Only synthetic fixtures/
+# are committed.
+# ============================================================================
+
+# --- Real data: belt and braces. Block all CSVs except the synthetic fixtures. ---
+*.csv
+*.CSV
+!fixtures/**/*.csv
+!tests/**/*.csv
+
+# Databases / consolidated store (build output — never commit, even synthetic)
+*.sqlite
+*.sqlite3
+*.db
+*.duckdb
+*.parquet
+
+# A local data root if it ever lives inside the repo (it should not)
+/data/
+/raw/
+/history/
+/20[0-9][0-9]Q[1-4]/
+/20[0-9][0-9]*/
+
+# Local, machine-specific config that points at real data / holds secrets
+config.local.yaml
+config.local.yml
+*.local.yaml
+.env
+.env.*
+secrets.*
+
+# Extractor: the REAL config holds real SimpleFIN account ids (only the .example is committed)
+extractor/extractor-config.yaml
+
+# Logs (may echo descriptions / amounts)
+*.log
+*.log.json
+/logs/
+
+# Generated mockup HTML (synthetic, but build output — keep _gen.py, drop the output)
+/dev/mockups/*.html
+
+# Generated demo instance (regenerable via scripts/gen-demo-data.py; synthetic CSVs +
+# config + Tiingo price cache + built store — all build output, never commit)
+/demo/
+
+# Ad-hoc scratch scripts (may touch real data / be machine-specific)
+/hacks/
+
+# --- Standard Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# SUBLIME
+FISCUS_PROJECT.*
