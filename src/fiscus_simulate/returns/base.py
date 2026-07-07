@@ -11,6 +11,7 @@ permute the time axis without re-running the generator.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 import numpy as np
@@ -56,3 +57,11 @@ class ReturnGenerator(ABC):
     def generate(self, n_scenarios: int) -> ReturnsBundle:
         """Produce a :class:`ReturnsBundle` for ``n_scenarios`` paths."""
         raise NotImplementedError
+
+    def iter_chunks(self, n_scenarios: int, chunk_size: int) -> Iterator[ReturnsBundle]:
+        """Yield bundles summing to ``n_scenarios``. Default: a single bundle.
+
+        Generators whose memory scales with the scenario count (e.g. GBM) override this
+        to stream fixed-size chunks; the concatenation must equal one ``generate`` call.
+        """
+        yield self.generate(n_scenarios)

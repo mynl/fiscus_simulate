@@ -8,7 +8,7 @@ Stage roadmap (one commit + minor bump per stage). Detail in `plan-overview.md`.
       (income-first model; analytic sale gross-up; cost-basis; success measures.)
 - [x] **1.2.0 Stage 3** — stochastic return generator (correlated GBM), generator
       interface, income/capital split, constant inflation arrays, seed determinism.
-- [ ] **1.3.0 Stage 4** — vectorized multi-path execution, chunking, summaries,
+- [x] **1.3.0 Stage 4** — vectorized multi-path execution, chunking, summaries,
       percentile trajectories, failure summaries, sampled paths, perf checks.
 - [ ] **1.4.0 Stage 5** — persistence: run dirs, metadata, summary Parquet, cache
       policy, reproducibility metadata.

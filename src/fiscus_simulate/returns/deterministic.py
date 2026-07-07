@@ -47,8 +47,23 @@ def build_deterministic_returns(config: RunConfig) -> ReturnsBundle:
 
 
 class DeterministicReturns(ReturnGenerator):
-    """Generator wrapper around :func:`build_deterministic_returns` (S-broadcast)."""
+    """Generator wrapper around :func:`build_deterministic_returns`.
+
+    All scenarios are identical, so the size-1 arrays are broadcast (read-only views —
+    the engine only reads them) up to ``n_scenarios`` with no extra memory.
+    """
 
     def generate(self, n_scenarios: int = 1) -> ReturnsBundle:
-        # Deterministic: identical across scenarios, so a size-1 axis broadcasts.
-        return build_deterministic_returns(self.config)
+        b = build_deterministic_returns(self.config)  # (1, T, n_asset)
+        if n_scenarios == 1:
+            return b
+
+        def bc(a: np.ndarray) -> np.ndarray:
+            return np.broadcast_to(a, (n_scenarios,) + a.shape[1:])
+
+        return ReturnsBundle(
+            capital_return=bc(b.capital_return),
+            income_yield=bc(b.income_yield),
+            nominal_total=bc(b.nominal_total),
+            overall_inflation_q=b.overall_inflation_q,
+        )

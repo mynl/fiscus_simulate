@@ -10,8 +10,13 @@ Conventions (see ``dev/plan-1.2-stage3-returns.md`` §2):
   reduces exactly to the deterministic provider.
 - ``nominal_total = (1+q_real)(1+pi_q) - 1``; ``income_yield = annual_yield/4``;
   ``capital_return = nominal_total - income_yield``.
+
+Chunking: :meth:`iter_chunks` streams from a single RNG so the concatenation of chunks is
+bit-identical to one :meth:`generate` of the full count (Stage 4 memory discipline).
 """
 from __future__ import annotations
+
+from collections.abc import Iterator
 
 import numpy as np
 
@@ -26,9 +31,18 @@ class GBMReturns(ReturnGenerator):
     def __init__(self, config: RunConfig) -> None:
         super().__init__(config)
         rg = config.return_generator
-        self._real = np.array([rg.real_return[a] for a in ASSET_CLASSES])
-        self._sigma_annual = np.array([rg.volatility[a] for a in ASSET_CLASSES])
-        self._yld = np.array([rg.income_yield[a] for a in ASSET_CLASSES])
+        real = np.array([rg.real_return[a] for a in ASSET_CLASSES])
+        sigma_annual = np.array([rg.volatility[a] for a in ASSET_CLASSES])
+        yld = np.array([rg.income_yield[a] for a in ASSET_CLASSES])
+
+        self._T = config.household.n_periods
+        self._n_asset = len(ASSET_CLASSES)
+        self._seed = config.simulation.seed
+        self._pi_q = float(annual_to_quarterly_return(config.inflation.overall_mean))
+        self._s_q = sigma_annual * np.sqrt(0.25)
+        self._m = np.log1p(annual_to_quarterly_return(real))  # geometric-mean centering
+        self._q_yield = annual_to_quarterly_yield(yld)
+
         corr = np.array(rg.correlations, dtype=float)
         try:
             self._chol = np.linalg.cholesky(corr)
@@ -38,32 +52,32 @@ class GBMReturns(ReturnGenerator):
                 "adjust the correlations (nearest-PSD repair is a future feature)"
             ) from exc
 
-    def generate(self, n_scenarios: int) -> ReturnsBundle:
-        cfg = self.config
-        T = cfg.household.n_periods
-        n_asset = len(ASSET_CLASSES)
-        pi_q = float(annual_to_quarterly_return(cfg.inflation.overall_mean))
-
-        s_q = self._sigma_annual * np.sqrt(0.25)                 # (n_asset,)
-        g_q = annual_to_quarterly_return(self._real)             # (n_asset,) geometric mean
-        m = np.log1p(g_q)                                        # log-return mean
-
-        rng = np.random.default_rng(cfg.simulation.seed)
-        z = rng.standard_normal((n_scenarios, T, n_asset))
-        z = z @ self._chol.T                                     # impose correlation
-        x = m[None, None, :] + s_q[None, None, :] * z            # log real return
-        q_real = np.expm1(x)                                     # exp(x) - 1
-
-        nominal_total = (1.0 + q_real) * (1.0 + pi_q) - 1.0
-        q_yield = annual_to_quarterly_yield(self._yld)
+    def _bundle_from_z(self, z: np.ndarray) -> ReturnsBundle:
+        """Build a bundle from standard-normal draws ``z`` of shape ``(S, T, n_asset)``."""
+        s = z.shape[0]
+        z = z @ self._chol.T                                  # impose correlation
+        x = self._m[None, None, :] + self._s_q[None, None, :] * z
+        q_real = np.expm1(x)
+        nominal_total = (1.0 + q_real) * (1.0 + self._pi_q) - 1.0
         income_yield = np.broadcast_to(
-            q_yield.reshape(1, 1, -1), (n_scenarios, T, n_asset)
+            self._q_yield.reshape(1, 1, -1), (s, self._T, self._n_asset)
         ).copy()
-        capital_return = nominal_total - income_yield
-
         return ReturnsBundle(
-            capital_return=capital_return,
+            capital_return=nominal_total - income_yield,
             income_yield=income_yield,
             nominal_total=nominal_total,
-            overall_inflation_q=pi_q,
+            overall_inflation_q=self._pi_q,
         )
+
+    def generate(self, n_scenarios: int) -> ReturnsBundle:
+        rng = np.random.default_rng(self._seed)
+        return self._bundle_from_z(rng.standard_normal((n_scenarios, self._T, self._n_asset)))
+
+    def iter_chunks(self, n_scenarios: int, chunk_size: int) -> Iterator[ReturnsBundle]:
+        """Stream bundles summing to ``n_scenarios`` (bit-identical to one ``generate``)."""
+        rng = np.random.default_rng(self._seed)
+        done = 0
+        while done < n_scenarios:
+            c = min(chunk_size, n_scenarios - done)
+            yield self._bundle_from_z(rng.standard_normal((c, self._T, self._n_asset)))
+            done += c

@@ -3,6 +3,32 @@
 All notable changes to `fiscus_simulate`. Semantic versioning from 1.0.0; each build
 stage bumps the minor. Newest first.
 
+## 1.3.0 — 2026-07-07
+
+Stage 4: vectorized execution & result summaries.
+
+### Added
+- `service.py` — `run_simulation(config)` orchestrates **chunked** execution over the
+  scenario axis (the full return cube never lives in memory), aggregates per-scenario
+  outcomes, and returns a `SimulationResult` (summary + representative paths + meta with
+  timing). `make_generator` selects GBM/deterministic by config.
+- `analysis/summary.py` — `SimulationSummary` + `summarize`: success rates (per criterion
+  + overall), failure-timing counts, **percentile trajectories** (1/5/10/25/50/75/90/95/99)
+  for the funnel (stored nominal + a `deflator` for real), terminal & scalar
+  distributions, representative success/fail path sampling.
+- Generators gain `iter_chunks(n, chunk)`; GBM streams from one RNG so chunking is
+  **bit-identical** to a single `generate(n)`. Deterministic broadcasts (zero-copy) to N.
+- `scripts/benchmark.py` — opt-in 100k perf check.
+
+### Tests
+- `iter_chunks` == single generate; chunked run == unchunked (rates + trajectories);
+  summary invariants (rates in [0,1], monotone percentiles, failure accounting, deflator);
+  real ≤ nominal; representative-path bounds; deterministic-via-service. 44 tests green.
+
+### Performance
+- 100,000 paths × 160 quarters in ~22 s (~4,500 paths/s), 128 MB retained (`net_worth`
+  only). Chunk size 10,000. (Opt-in; not part of routine tests.)
+
 ## 1.2.0 — 2026-07-07
 
 Stage 3: stochastic return & inflation generator.

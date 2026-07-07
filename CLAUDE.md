@@ -185,8 +185,6 @@ sibling `pyproject.toml` for the `csv-grid` local `[tool.uv.sources]` path.
   roadmap; check it before proposing structural changes.
 - Use **[human-readable] type labels** for steps/deliverables ([engine], [web]), never
   A1/A2.
-- **Keep `human-hints.md` current** — a high-level, newest-first log of what we discuss
-  and decide. Update it at the close of each session.
 
 ## The V1/V2 discipline (the spine of this project)
 

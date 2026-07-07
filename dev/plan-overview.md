@@ -1,8 +1,8 @@
 # fiscus_simulate — Plan Overview
 
 High-level map of the whole build. Detail for each stage lives in its own
-`dev/plan-<version>-stageN-*.md`; this file is the one-screen summary. Newest
-decisions bubble up into `human-hints.md`.
+`dev/plan-<version>-stageN-*.md`; this file is the one-screen summary. The
+`CHANGELOG.md` is the record of what landed.
 
 ## What we're building
 
@@ -66,7 +66,7 @@ in-memory run is fine.
 ## Working rules (from CLAUDE.md)
 
 Propose/plan before coding; move a plan to `dev/done/` only when the author says
-done; YELL if a stage balloons; keep `CHANGELOG.md`, `human-hints.md`, `dev/TODO.md`
+done; YELL if a stage balloons; keep `CHANGELOG.md` and `dev/TODO.md`
 current; NumPy docstrings; label V1 simplifications plainly in the UI.
 
 ## Decisions confirmed 2026-07-07
