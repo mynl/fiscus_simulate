@@ -1,11 +1,16 @@
 {% extends "fiscus_simulate/base.html" %}
 {% block title %}Dashboard &middot; fiscus_simulate{% endblock %}
 
+{% block help %}
+  <p class="text-muted small mb-2"><strong>Dashboard.</strong> Landing page. Will show
+  configured plans, recent runs, success rate and median terminal wealth once the run
+  workflow lands (Stage 6–7).</p>
+  <p class="text-muted small mb-0">Nothing here reduces spending to flatter results —
+  V1 sticks to plan and exposes failure honestly.</p>
+{% endblock %}
+
 {% block content %}
-<div class="d-flex align-items-baseline justify-content-between mb-3">
-  <h1 class="h3 mb-0">Simulation dashboard</h1>
-  <span class="text-muted small">v{{ app_version }}</span>
-</div>
+<h1 class="h3 mb-3">Simulation dashboard</h1>
 
 {% if runs %}
   {# Stage 7 fills this with recent runs, success rate, median terminal wealth. #}

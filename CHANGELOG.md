@@ -3,6 +3,20 @@
 All notable changes to `fiscus_simulate`. Semantic versioning from 1.0.0; each build
 stage bumps the minor. Newest first.
 
+## 1.0.1 — 2026-07-07
+
+### Added
+- Top-right `?` **help offcanvas** (Bootstrap, mirrors fiscus_project): terse,
+  per-page `{% block help %}` content; **version info moved into the help footer** so it
+  stays available to the dev without cluttering the page. Added Bootstrap JS bundle +
+  bootstrap-icons.
+
+### Changed
+- Removed the on-page version display (now in the help pane only).
+
+### Tidy
+- `.gitattributes` normalizes line endings to LF (ends the CRLF churn on Windows).
+
 ## 1.0.0 — 2026-07-07
 
 Stage 1: package skeleton and configuration models.
