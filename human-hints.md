@@ -4,6 +4,12 @@ High-level log of what we discuss and decide. Newest first.
 
 ## 2026-07-07
 
+- **Stage 3 built (v1.2.0): stochastic return generator.** `ReturnGenerator` ABC +
+  `ReturnsBundle` contract (nominal_total = realized environment, Stage 8 seam);
+  correlated GBM (Cholesky, geometric-mean centered so vol=0 == deterministic), seeded.
+  Engine now takes `(S,T,n_asset)` returns. 37 tests green. **10k×160 in ~1.6s.**
+  Default plan ~50% success (fixed-real 4.8%/40y) — failure exposed. `link-mode=copy`
+  added to pyproject (V: drive junction). App served at http://127.0.0.1:5057.
 - **Stage 2 built (v1.1.0): deterministic quarterly engine.** Income-first model
   (Steve's correction — spend div/int first, sell on shortfall, accumulate excess cash,
   no rebalancing). Analytic sale gross-up `G=Δ/(1−τ)`. Initial taxable cost basis added

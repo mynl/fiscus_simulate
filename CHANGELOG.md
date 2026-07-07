@@ -3,6 +3,38 @@
 All notable changes to `fiscus_simulate`. Semantic versioning from 1.0.0; each build
 stage bumps the minor. Newest first.
 
+## 1.2.0 — 2026-07-07
+
+Stage 3: stochastic return & inflation generator.
+
+### Added
+- `returns/base.py` — `ReturnsBundle` contract (arrays `(S, T, n_asset)`, including
+  `nominal_total` = the realized return environment, the Stage 8 seam) and the
+  `ReturnGenerator` ABC.
+- `returns/gbm.py` — V1 correlated GBM/lognormal generator: real returns via Cholesky of
+  the config correlation matrix, quarterly vol `sigma*sqrt(1/4)`, log-return centered on
+  the geometric quarterly mean (so vol=0 reduces exactly to the deterministic provider),
+  constant inflation, deterministic yield, seeded RNG for reproducibility.
+- `returns/deterministic.py` — refactored to the shared `ReturnsBundle` + a
+  `DeterministicReturns` generator class.
+
+### Changed
+- Engine consumes returns as `(Sr, T, n_asset)` and broadcasts over the account axis;
+  the scenario count comes from the supplied bundle. The reconciliation identity is
+  model-agnostic and holds on stochastic runs.
+- `pyproject.toml`: `[tool.uv] link-mode = "copy"` (the `.venv` junction lives on the V:
+  dev drive; silences the hardlink-fallback warning).
+
+### Tests
+- Shapes/axis order, seed reproducibility, zero-vol == deterministic, income/capital
+  split, statistical recovery (mean/vol/correlation on a large sample), and engine
+  reconciliation on a stochastic run. 37 tests green.
+
+### Notes
+- Performance: 10,000 paths × 160 quarters in ~1.6s locally. Chunking + summaries are
+  Stage 4; the default plan shows a ~50% success rate (fixed-real 4.8% over 40y) —
+  failure is exposed, not smoothed.
+
 ## 1.1.0 — 2026-07-07
 
 Stage 2: deterministic quarterly engine.

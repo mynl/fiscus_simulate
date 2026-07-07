@@ -20,7 +20,8 @@ import numpy as np
 from .assets import BONDS, CASH, STOCKS, TAXABLE, proportional_sale
 from .income import build_external_income
 from .models import ACCOUNT_TYPES, ASSET_CLASSES, RunConfig
-from .returns.deterministic import ReturnsBundle, build_deterministic_returns
+from .returns.base import ReturnsBundle
+from .returns.deterministic import build_deterministic_returns
 from .spending import build_spending_path
 from .tax import income_tax
 
@@ -95,16 +96,18 @@ def simulate(config: RunConfig, returns: ReturnsBundle | None = None,
     config : RunConfig
         The run configuration (single source of truth).
     returns : ReturnsBundle, optional
-        Per-period return arrays. Defaults to the deterministic provider (Stage 2). Its
-        ``(T, n_assets)`` arrays are shared across scenarios (broadcast over ``S``).
+        Per-period return arrays ``(Sr, T, n_asset)``. Defaults to the deterministic
+        provider (``Sr = 1``, broadcast over scenarios). When a bundle is supplied its
+        scenario count sets ``S``.
     n_scenarios : int
-        Scenario-axis size. Stage 2 default 1; the deterministic returns make all
-        scenarios identical.
+        Scenario-axis size when ``returns`` is None (deterministic). Ignored otherwise.
     """
     if returns is None:
-        returns = build_deterministic_returns(config)
+        returns = build_deterministic_returns(config)  # (1, T, n_asset)
+        S = n_scenarios
+    else:
+        S = returns.n_scenarios
 
-    S = n_scenarios
     T = config.household.n_periods
     n_acct, n_asset = len(ACCOUNT_TYPES), len(ASSET_CLASSES)
     td_rate = config.tax_rates.tax_deferred_withdrawal
@@ -133,16 +136,17 @@ def simulate(config: RunConfig, returns: ReturnsBundle | None = None,
     funded_a = np.zeros((S, T), dtype=bool)
 
     for t in range(T):
-        yld_t = returns.income_yield[t]        # (n_asset,)
-        cap_t = returns.capital_return[t]      # (n_asset,)
+        yld_t = returns.income_yield[:, t, :]      # (Sr, n_asset), Sr in {1, S}
+        cap_t = returns.capital_return[:, t, :]    # (Sr, n_asset)
 
         # 4. Investment income on beginning balances, paid into each account's cash.
-        income_cell = B * yld_t[None, None, :]         # (S, acct, asset)
+        income_cell = B * yld_t[:, None, :]            # (S, acct, asset)
         acct_income = income_cell.sum(axis=2)          # (S, acct)
         inv_income = income_cell.sum(axis=(1, 2))      # (S,)
         # Taxable-account income split (from BEGINNING balances) for tax.
-        interest_taxable = B[:, TAXABLE, BONDS] * yld_t[BONDS] + B[:, TAXABLE, CASH] * yld_t[CASH]
-        dividend_taxable = B[:, TAXABLE, STOCKS] * yld_t[STOCKS]
+        interest_taxable = (B[:, TAXABLE, BONDS] * yld_t[:, BONDS]
+                            + B[:, TAXABLE, CASH] * yld_t[:, CASH])
+        dividend_taxable = B[:, TAXABLE, STOCKS] * yld_t[:, STOCKS]
 
         B[:, :, CASH] += acct_income                   # income becomes cash in-account
 
@@ -168,8 +172,8 @@ def simulate(config: RunConfig, returns: ReturnsBundle | None = None,
         )
 
         # 9. Apply capital returns to end-of-period balances.
-        cap_amt = (B * cap_t[None, None, :]).sum(axis=(1, 2))
-        B *= 1.0 + cap_t[None, None, :]
+        cap_amt = (B * cap_t[:, None, :]).sum(axis=(1, 2))
+        B *= 1.0 + cap_t[:, None, :]
 
         # 10. Record.
         net_worth[:, t] = B.sum(axis=(1, 2))

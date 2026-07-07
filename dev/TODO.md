@@ -6,7 +6,7 @@ Stage roadmap (one commit + minor bump per stage). Detail in `plan-overview.md`.
       validation, minimal Flask boot, tests.
 - [x] **1.1.0 Stage 2** — deterministic quarterly engine + reconciliation tests.
       (income-first model; analytic sale gross-up; cost-basis; success measures.)
-- [ ] **1.2.0 Stage 3** — stochastic return generator (correlated GBM), generator
+- [x] **1.2.0 Stage 3** — stochastic return generator (correlated GBM), generator
       interface, income/capital split, constant inflation arrays, seed determinism.
 - [ ] **1.3.0 Stage 4** — vectorized multi-path execution, chunking, summaries,
       percentile trajectories, failure summaries, sampled paths, perf checks.
