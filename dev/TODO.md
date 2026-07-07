@@ -10,7 +10,7 @@ Stage roadmap (one commit + minor bump per stage). Detail in `plan-overview.md`.
       interface, income/capital split, constant inflation arrays, seed determinism.
 - [x] **1.3.0 Stage 4** — vectorized multi-path execution, chunking, summaries,
       percentile trajectories, failure summaries, sampled paths, perf checks.
-- [ ] **1.4.0 Stage 5** — persistence: run dirs, metadata, summary Parquet, cache
+- [x] **1.4.0 Stage 5** — persistence: run dirs, metadata, summary Parquet, cache
       policy, reproducibility metadata.
 - [ ] **1.5.0 Stage 6** — web configuration workflow (pages, validation, run form,
       csv-grid); settle csv-grid distribution for the VPS.

@@ -48,7 +48,8 @@ def make_generator(config: RunConfig) -> ReturnGenerator:
     raise ValueError(f"unknown return generator kind: {kind!r}")
 
 
-def run_simulation(config: RunConfig, generator: ReturnGenerator | None = None) -> SimulationResult:
+def run_simulation(config: RunConfig, generator: ReturnGenerator | None = None,
+                   persist: bool = False, runs_dir=None) -> SimulationResult:
     """Run the full simulation in chunks and summarize it.
 
     Parameters
@@ -57,6 +58,11 @@ def run_simulation(config: RunConfig, generator: ReturnGenerator | None = None) 
         The run configuration.
     generator : ReturnGenerator, optional
         Override the generator (defaults to :func:`make_generator`).
+    persist : bool
+        When True, save the run to a directory (``runs_dir`` or the app-state default)
+        and record ``run_id`` / ``run_dir`` in ``meta``.
+    runs_dir : Path, optional
+        Parent directory for the saved run.
     """
     gen = generator or make_generator(config)
     S = config.simulation.n_scenarios
@@ -106,7 +112,15 @@ def run_simulation(config: RunConfig, generator: ReturnGenerator | None = None) 
         "chunk_size": chunk,
         "runtime_s": runtime,
     }
-    return SimulationResult(summary=summary, sample_paths=sample, meta=meta)
+    result = SimulationResult(summary=summary, sample_paths=sample, meta=meta)
+
+    if persist:
+        from .storage import save_run  # lazy: keeps non-persisted runs pandas-free
+        run_dir = save_run(result, config, runs_dir=runs_dir)
+        result.meta["run_id"] = run_dir.name
+        result.meta["run_dir"] = str(run_dir)
+
+    return result
 
 
 def _representative(net_worth: np.ndarray, success: dict[str, np.ndarray],

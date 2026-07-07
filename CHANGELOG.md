@@ -3,6 +3,31 @@
 All notable changes to `fiscus_simulate`. Semantic versioning from 1.0.0; each build
 stage bumps the minor. Newest first.
 
+## 1.4.0 — 2026-07-07
+
+Stage 5: persistence & reproducibility.
+
+### Added
+- `storage.py` — the persistence boundary (pandas/pyarrow live only here). Saves a run to
+  `~/.fiscus_simulate/simulation_runs/<run_id>/`: `config.yaml`, `metadata.json`, and
+  Parquet `summary` / `percentiles` / `failures` / `scalars` (+ optional `paths` gated by
+  `persist_sample_paths`). The full scenario cube is never persisted.
+- **Reproducibility metadata**: run_id (`YYYYMMDDTHHMMSSZ-<hex>`), timestamp, seed,
+  generator, package version, git commit (where available), Python + dependency versions,
+  n_scenarios, horizon, runtime, status, warnings, and a **summary checksum** so a rerun
+  with the same code+config+seed verifies byte-for-byte.
+- **Cache management**: `list_runs`, `load_run`, `delete_run`, `delete_details`
+  (drop paths, keep summary), `pin`/`is_pinned` (protect from prune), `prune`
+  (age / size limits + incomplete-run cleanup; never removes a pinned run; returns what
+  it dropped).
+- `service.run_simulation(persist=..., runs_dir=...)` — opt-in persistence recording
+  `run_id`/`run_dir` in `meta`.
+
+### Tests
+- Save/load round-trip (config + percentile values), checksum reproducibility,
+  optional-paths + delete-details, list/delete, pin-protects-prune, incomplete cleanup,
+  run-id shape — all against a temp runs dir. 52 tests green.
+
 ## 1.3.0 — 2026-07-07
 
 Stage 4: vectorized execution & result summaries.
