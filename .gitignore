@@ -25,9 +25,6 @@
 /20[0-9][0-9]Q[1-4]/
 /20[0-9][0-9]*/
 
-# Author's personal notes file — never track (kept locally only)
-HUMAN.md
-
 # Local, machine-specific config that points at real data / holds secrets
 config.local.yaml
 config.local.yml
@@ -77,3 +74,6 @@ Thumbs.db
 
 # SUBLIME
 FISCUS_PROJECT.*
+
+# Generated local preview reports (build output)
+/dev/preview/
