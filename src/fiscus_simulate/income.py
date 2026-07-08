@@ -1,6 +1,7 @@
 """External income (pensions / Social Security) schedules.
 
-Each stream is active while its owner's age is in ``[start_age, end_age)``. Annual real
+Streams are nested under their owning person; each is active while that person's age is
+in ``[start_age, end_age)``. Annual real
 amounts convert to quarterly (``/4``); inflation-linked streams grow with overall
 inflation, others stay fixed in nominal terms (eroding in real terms).
 """
@@ -30,23 +31,22 @@ def build_external_income(config: RunConfig, overall_inflation_q: float) -> Inco
         Constant quarterly overall inflation, used to index inflation-linked streams.
     """
     T = config.household.n_periods
-    ages0 = {p.role: p.current_age for p in config.household.people}
 
     total = np.zeros(T)
     taxable = np.zeros(T)
     t = np.arange(T)
-    age_at = {role: age0 + t / 4.0 for role, age0 in ages0.items()}
     infl_factor = np.power(1.0 + overall_inflation_q, t)
 
-    for s in config.income_streams:
-        age = age_at[s.owner]
-        active = age >= s.start_age
-        if s.end_age is not None:
-            active &= age < s.end_age
-        q_real = s.annual_real / 4.0
-        nominal = np.where(active, q_real, 0.0)
-        if s.inflation_linked:
-            nominal = nominal * infl_factor
-        total += nominal
-        taxable += nominal * s.taxable_fraction
+    for person in config.household.people:
+        age = person.current_age + t / 4.0
+        for s in person.income_streams:
+            active = age >= s.start_age
+            if s.end_age is not None:
+                active &= age < s.end_age
+            q_real = s.annual_real / 4.0
+            nominal = np.where(active, q_real, 0.0)
+            if s.inflation_linked:
+                nominal = nominal * infl_factor
+            total += nominal
+            taxable += nominal * s.taxable_fraction
     return IncomePath(total=total, taxable=taxable)

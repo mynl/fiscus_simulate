@@ -22,6 +22,7 @@ from flask import (
 
 from ..config import from_yaml_str, to_yaml_str
 from ..models import RunConfig
+from ..preview import config_preview
 from . import configs
 from .views import format_config_error
 
@@ -57,19 +58,21 @@ def dashboard():
 @bp.route("/config/new")
 def config_new():
     """Open the editor seeded from the illustrative default configuration."""
+    cfg = RunConfig.default()
     return render_template(
         "fiscus_simulate/config_edit.html",
         state=_state(),
         name="",
-        yaml_text=to_yaml_str(RunConfig.default()),
+        yaml_text=to_yaml_str(cfg),
         errors=[],
         is_saved=False,
+        preview=config_preview(cfg),
     )
 
 
 @bp.route("/config/<name>")
 def config_edit(name: str):
-    """Open a saved configuration in the editor."""
+    """Open a saved configuration in the editor, with a config-derived preview."""
     state = _state()
     if not configs.exists(state.configs_dir, name):
         abort(404)
@@ -81,6 +84,7 @@ def config_edit(name: str):
         yaml_text=to_yaml_str(cfg),
         errors=[],
         is_saved=True,
+        preview=config_preview(cfg),
     )
 
 
@@ -199,4 +203,32 @@ def run_detail(run_id: str):
         run=loaded,
         metadata=loaded.metadata,
         metrics=metrics,
+        scalars=_scalar_distribution(loaded.scalars),
     )
+
+
+# Scalar outcomes to surface (column in scalars.parquet, display label, is-money).
+_SCALAR_ROWS = [
+    ("total_tax", "Taxes paid (lifetime)", True),
+    ("total_sales", "Assets sold (lifetime)", True),
+    ("terminal_nominal", "Terminal net worth (nominal)", True),
+    ("min_net_worth", "Minimum net worth", True),
+    ("years_funded", "Years fully funded", False),
+]
+
+
+def _scalar_distribution(scalars) -> list[dict]:
+    """Extract p10 / p50 / p90 of each surfaced scalar from the scalars frame."""
+    by_pct = {int(row["percentile"]): row for _, row in scalars.iterrows()}
+    out = []
+    for col, label, is_money in _SCALAR_ROWS:
+        if col not in scalars.columns:
+            continue
+        out.append({
+            "label": label,
+            "is_money": is_money,
+            "p10": float(by_pct[10][col]),
+            "p50": float(by_pct[50][col]),
+            "p90": float(by_pct[90][col]),
+        })
+    return out

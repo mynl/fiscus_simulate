@@ -22,7 +22,7 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 # Numerical tolerance for the spending category-percentage sum check.
 PCT_SUM_TOL = 1e-6
@@ -74,28 +74,54 @@ class _Model(BaseModel):
 
 
 # ----------------------------------------------------------------------- household
-class Person(_Model):
-    """One household member and their state-pension / Social-Security-style income.
+class IncomeStream(_Model):
+    """An external income stream owned by a person (state pension / Social Security).
+
+    Streams are nested under their owning :class:`Person` (V1.1) — the person *is* the
+    owner, so there is no separate owner key to keep in sync. A stream is active while
+    the owner's age is in ``[start_age, end_age)``.
 
     Parameters
     ----------
-    role : str
-        Human-readable label, e.g. ``"A"`` or ``"spouse"``.
-    current_age : float
-        Age in years at the simulation start date.
-    pension_start_age : float
-        Age at which the state pension / Social Security income begins.
-    annual_real_pension : float
-        Annual real (today's-money) pension amount once started.
-    pension_end_age : float or None
-        Optional age at which the income stops (``None`` = runs to horizon end).
+    label : str
+        Human-readable descriptor, e.g. ``"state pension"`` or ``"Social Security"``.
+    annual_real : float
+        Annual real (today's-money) amount once started.
+    start_age : float
+        Owner age at which the income begins.
+    end_age : float or None
+        Optional owner age at which it stops (``None`` = runs to horizon end).
+    inflation_linked : bool
+        If True the amount grows with overall inflation; otherwise fixed in nominal
+        terms (eroding in real terms).
+    taxable_fraction : float
+        Portion of the income subject to the ``other_pension`` tax rate.
     """
 
-    role: str
+    label: str = "pension"
+    annual_real: float = Field(ge=0)
+    start_age: float = Field(ge=0, lt=120)
+    end_age: float | None = Field(default=None, ge=0, le=120)
+    inflation_linked: bool = True
+    taxable_fraction: float = Field(default=1.0, ge=0, le=1)
+
+
+class Person(_Model):
+    """One household member and their external income streams.
+
+    Parameters
+    ----------
+    name : str
+        The person's name (or a short label like ``"A"``). Used for display.
+    current_age : float
+        Age in years at the simulation start date.
+    income_streams : list of IncomeStream
+        Pensions / Social-Security-style income belonging to this person (may be empty).
+    """
+
+    name: str
     current_age: float = Field(gt=0, lt=120)
-    pension_start_age: float = Field(ge=0, lt=120)
-    annual_real_pension: float = Field(ge=0)
-    pension_end_age: float | None = Field(default=None, ge=0, le=120)
+    income_streams: list[IncomeStream] = Field(default_factory=list)
 
 
 class Household(_Model):
@@ -293,18 +319,6 @@ class ReturnGeneratorConfig(_Model):
         return v
 
 
-# -------------------------------------------------------------------------- income
-class IncomeStream(_Model):
-    """A generic external income stream (state pension / Social Security style)."""
-
-    owner: str  # a Person.role
-    annual_real: float = Field(ge=0)
-    start_age: float = Field(ge=0, lt=120)
-    end_age: float | None = Field(default=None, ge=0, le=120)
-    inflation_linked: bool = True
-    taxable_fraction: float = Field(default=1.0, ge=0, le=1)
-
-
 # ----------------------------------------------------------------------------- tax
 class TaxRates(_Model):
     """Flat marginal tax rates by income type (V1 simplification).
@@ -356,21 +370,10 @@ class RunConfig(_Model):
     inflation: InflationAssumptions
     balances: AccountBalances
     return_generator: ReturnGeneratorConfig
-    income_streams: list[IncomeStream]
     tax_rates: TaxRates
     withdrawal_policy: WithdrawalPolicy = Field(default_factory=WithdrawalPolicy)
     rebalancing_policy: RebalancingPolicy = Field(default_factory=RebalancingPolicy)
     simulation: SimulationConfig = Field(default_factory=SimulationConfig)
-
-    @model_validator(mode="after")
-    def _income_owners_exist(self) -> RunConfig:
-        roles = {p.role for p in self.household.people}
-        for stream in self.income_streams:
-            if stream.owner not in roles:
-                raise ValueError(
-                    f"income stream owner {stream.owner!r} is not a household member {sorted(roles)}"
-                )
-        return self
 
     def clone(self) -> RunConfig:
         """Return a deep copy (basis for a new, independently-editable run)."""
@@ -387,10 +390,10 @@ class RunConfig(_Model):
         return cls(
             household=Household(
                 people=[
-                    Person(role="A", current_age=60, pension_start_age=67,
-                           annual_real_pension=11_000),
-                    Person(role="B", current_age=58, pension_start_age=67,
-                           annual_real_pension=9_000),
+                    Person(name="A", current_age=60, income_streams=[
+                        IncomeStream(label="pension", annual_real=11_000, start_age=67)]),
+                    Person(name="B", current_age=58, income_streams=[
+                        IncomeStream(label="pension", annual_real=9_000, start_age=67)]),
                 ],
                 start_date=date(2026, 3, 31),
                 horizon_years=40,
@@ -443,10 +446,6 @@ class RunConfig(_Model):
                               AssetClass.cash: 0.01},
                 correlations=[[1.0, 0.2, 0.0], [0.2, 1.0, 0.1], [0.0, 0.1, 1.0]],
             ),
-            income_streams=[
-                IncomeStream(owner="A", annual_real=11_000, start_age=67, taxable_fraction=1.0),
-                IncomeStream(owner="B", annual_real=9_000, start_age=67, taxable_fraction=1.0),
-            ],
             tax_rates=TaxRates(
                 tax_deferred_withdrawal=0.20, interest=0.20, dividend=0.15,
                 realized_gain=0.15, other_pension=0.20,

@@ -3,6 +3,39 @@
 All notable changes to `fiscus_simulate`. Semantic versioning from 1.0.0; each build
 stage bumps the minor. Newest first.
 
+## 1.5.1 — 2026-07-08
+
+Pre-Stage-7 refinements: income model cleanup, editor rename semantics, config preview,
+and surfaced taxes.
+
+### Changed (breaking config schema → `schema_version` 1.1)
+- **Income streams now nest under each person** (`Person.income_streams`), removing the
+  redundant top-level `income_streams` list and its `owner` cross-reference. The engine
+  already read only the streams; the `Person`-level pension scalar fields
+  (`pension_start_age`, `annual_real_pension`, `pension_end_age`) were dead and are gone.
+  A stream gains an optional `label` (e.g. "state pension").
+- **`Person.role` → `Person.name`** (the person's name; the `owner` key it backed is
+  gone). The `_income_owners_exist` validator is removed (nothing to cross-check now).
+  `fixtures/example_config.yaml` regenerated to the new shape.
+
+### Added
+- **Config preview** (`preview.py` → `config_preview`, pure/closed-form, no engine run):
+  household wealth (total + by account), gross portfolio income and the estimated
+  taxable-account tax at t=0, pensions (total, active-now, years to first), planned
+  spending, and the implied **gross** and **net** initial withdrawal rates. Rendered as
+  a card on the editor after save (default: 4.8% gross / 2.6% net).
+- **Rename-on-save = new scenario**: the editor name field is editable when editing a
+  saved config; changing it and saving writes a new scenario and keeps the original.
+- **Taxes surfaced** on the run view: p10/p50/p90 of lifetime taxes paid (plus assets
+  sold, terminal/minimum net worth, years funded), read from `scalars.parquet`. (Taxes
+  were always computed — interest, dividends, pension, tax-deferred withdrawals, realized
+  gains — just not shown.)
+
+### Tests
+- Nested income streams round-trip; person-without-streams; preview figures
+  (wealth/income/tax/withdrawal-rate exact); active-pension-now; editor renders the
+  preview; rename creates a new scenario; run view shows lifetime taxes. 68 tests green.
+
 ## 1.5.0 — 2026-07-07
 
 Stage 6: web configuration workflow — drive a persisted simulation from the browser.

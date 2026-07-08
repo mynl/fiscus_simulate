@@ -34,7 +34,8 @@ def _flat_cfg(horizon_years=1):
     cfg.tax_rates.dividend = 0.0
     cfg.tax_rates.realized_gain = 0.0
     cfg.tax_rates.other_pension = 0.0
-    cfg.income_streams = []
+    for person in cfg.household.people:
+        person.income_streams = []
     cfg.spending.total_annual_real = 40_000  # 10,000 / quarter
     cfg.balances.balances = {
         AccountType.taxable: {AssetClass.stocks: 0.0, AssetClass.bonds: 0.0, AssetClass.cash: 100_000.0},
@@ -78,8 +79,9 @@ def test_zero_everything_pure_drawdown():
 
 def test_surplus_income_accumulates_as_cash():
     cfg = _flat_cfg(horizon_years=1)
-    cfg.income_streams = [IncomeStream(owner="A", annual_real=80_000, start_age=0,
-                                       inflation_linked=False, taxable_fraction=0.0)]
+    cfg.household.people[0].income_streams = [
+        IncomeStream(annual_real=80_000, start_age=0, inflation_linked=False,
+                     taxable_fraction=0.0)]
     res = simulate(cfg)  # income 20k/q, spend 10k/q -> +10k/q
     np.testing.assert_allclose(res.net_worth[0], [110_000, 120_000, 130_000, 140_000])
     assert _reconciles(res, 100_000)

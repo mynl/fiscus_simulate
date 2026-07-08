@@ -47,6 +47,20 @@ def test_name_is_slugified(client, tmp_path):
     assert configs.list_configs(tmp_path / "configs") == ["base-case-1"]
 
 
+def test_editor_shows_preview(client):
+    client.post("/config", data={"name": "prev", "yaml": _small_config_yaml()})
+    body = client.get("/config/prev").get_data(as_text=True)
+    assert "Preview" in body and "Household wealth" in body
+    assert "1,250,000" in body  # wealth total from the default balances
+
+
+def test_rename_on_save_creates_new_scenario(client, tmp_path):
+    """Editing a loaded config's name and saving keeps the original and adds a copy."""
+    client.post("/config", data={"name": "orig", "yaml": _small_config_yaml()})
+    client.post("/config", data={"name": "variant", "yaml": _small_config_yaml()})
+    assert configs.list_configs(tmp_path / "configs") == ["orig", "variant"]
+
+
 def test_invalid_yaml_rerenders_with_errors(client, tmp_path):
     resp = client.post("/config", data={"name": "broken", "yaml": "household: [unclosed"})
     assert resp.status_code == 200  # re-render, not a redirect, not a 500
@@ -92,8 +106,9 @@ def test_run_launch_persists_and_views(client, tmp_path):
     # The run is persisted and viewable.
     runs = storage.list_runs(runs_dir=tmp_path / "simulation_runs")
     assert [r.run_id for r in runs] == [run_id]
-    assert client.get(f"/runs/{run_id}").status_code == 200
-    assert b"overall_success_rate" in client.get(f"/runs/{run_id}").data
+    detail = client.get(f"/runs/{run_id}").get_data(as_text=True)
+    assert "overall_success_rate" in detail
+    assert "Taxes paid (lifetime)" in detail  # tax outcomes surfaced
     assert client.get("/runs").status_code == 200
 
 

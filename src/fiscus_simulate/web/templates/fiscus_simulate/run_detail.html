@@ -51,6 +51,32 @@
   </div>
 </div>
 
+{% if scalars %}
+  <h2 class="h5 mt-2">Outcome distribution <span class="text-muted small fw-normal">(per household, across scenarios)</span></h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead><tr>
+        <th></th><th class="text-end">p10 (unlucky)</th><th class="text-end">p50 (median)</th>
+        <th class="text-end">p90 (lucky)</th>
+      </tr></thead>
+      <tbody>
+        {% for s in scalars %}
+          <tr>
+            <td>{{ s.label }}</td>
+            {% for v in [s.p10, s.p50, s.p90] %}
+              <td class="text-end">
+                {% if s.is_money %}{{ "{:,.0f}".format(v) }}{% else %}{{ "%.1f"|format(v) }}{% endif %}</td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="text-muted small">Lifetime taxes are the summed nominal tax across all 160
+  quarters — interest &amp; dividends on the taxable account, taxable pension income,
+  tax-deferred withdrawals, and realized capital gains.</p>
+{% endif %}
+
 <div class="alert alert-warning model-note mt-3" role="alert">
   <strong>Model limitations (V1).</strong> Flat-rate taxes; no mortality/morbidity; fixed
   spending mix; proportional withdrawals; no rebalancing; stylized return generator.

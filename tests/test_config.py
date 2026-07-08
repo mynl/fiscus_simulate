@@ -66,8 +66,7 @@ def test_spending_pct_missing_category():
 
 def test_household_must_have_two_people():
     with pytest.raises(ValidationError, match="exactly two"):
-        Household(people=[Person(role="solo", current_age=60, pension_start_age=67,
-                                 annual_real_pension=0)],
+        Household(people=[Person(name="solo", current_age=60)],
                   start_date="2026-03-31")
 
 
@@ -95,12 +94,20 @@ def test_unknown_field_rejected():
         RunConfig.model_validate(data)
 
 
-def test_income_owner_must_be_household_member():
+def test_income_streams_nest_under_people():
     cfg = RunConfig.default()
-    data = cfg.model_dump(mode="json")
-    data["income_streams"][0]["owner"] = "ghost"
-    with pytest.raises(ValidationError, match="not a household member"):
-        RunConfig.model_validate(data)
+    # Streams live on the person now — no separate top-level list / owner key.
+    assert not hasattr(cfg, "income_streams")
+    assert cfg.household.people[0].name == "A"
+    assert cfg.household.people[0].income_streams[0].annual_real == 11_000
+    # Round-trips with the nesting intact.
+    again = from_yaml_str(to_yaml_str(cfg))
+    assert again.household.people[1].income_streams[0].annual_real == 9_000
+
+
+def test_person_may_have_no_income_streams():
+    p = Person(name="C", current_age=55)
+    assert p.income_streams == []
 
 
 def test_schema_version_mismatch_warns():

@@ -23,14 +23,52 @@
   </div>
 {% endif %}
 
+{% if preview %}
+  {% set p = preview %}
+  <div class="card mb-3 border-primary-subtle">
+    <div class="card-header bg-primary-subtle py-2 small fw-semibold">
+      <i class="bi bi-clipboard-data me-1"></i>Preview — a plausibility check (no simulation run)</div>
+    <div class="card-body py-3">
+      <div class="row g-3 text-center small">
+        <div class="col-6 col-md-3">
+          <div class="text-muted">Household wealth</div>
+          <div class="fs-5 fw-semibold">{{ "{:,.0f}".format(p.wealth_total) }}</div>
+          <div class="text-muted" style="font-size:.75rem;">
+            {% for acct, v in p.wealth_by_account.items() %}{{ acct }} {{ "{:,.0f}".format(v) }}{% if not loop.last %} &middot; {% endif %}{% endfor %}</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="text-muted">Portfolio income / yr</div>
+          <div class="fs-5 fw-semibold">{{ "{:,.0f}".format(p.portfolio_income_annual) }}</div>
+          <div class="text-muted" style="font-size:.75rem;">est. tax now {{ "{:,.0f}".format(p.portfolio_income_tax_annual) }}</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="text-muted">Pension income / yr</div>
+          <div class="fs-5 fw-semibold">{{ "{:,.0f}".format(p.pension_income_total_annual) }}</div>
+          <div class="text-muted" style="font-size:.75rem;">
+            {% if p.external_income_now_annual %}{{ "{:,.0f}".format(p.external_income_now_annual) }} active now{% elif p.years_to_first_pension is not none %}starts in {{ "%.0f"|format(p.years_to_first_pension) }} yr{% else %}none{% endif %}</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="text-muted">Planned spending / yr</div>
+          <div class="fs-5 fw-semibold">{{ "{:,.0f}".format(p.planned_spending_annual) }}</div>
+          <div class="text-muted" style="font-size:.75rem;">
+            withdrawal {{ "%.1f%%"|format(100 * p.gross_withdrawal_rate) }} gross
+            &middot; {{ "%.1f%%"|format(100 * p.net_withdrawal_rate) }} net now</div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
 <form method="post" action="{{ url_for('simulate.config_save') }}">
   <div class="row g-2 align-items-end mb-2">
     <div class="col-sm-6 col-md-4">
       <label class="form-label small mb-1">Name</label>
       <input class="form-control" type="text" name="name" value="{{ name }}"
              placeholder="e.g. base-case" pattern="[A-Za-z0-9][A-Za-z0-9_\- ]*"
-             {{ 'readonly' if is_saved else 'autofocus' }}>
-      <div class="form-text">Letters, digits, dashes/underscores.</div>
+             {{ 'autofocus' if not is_saved }}>
+      <div class="form-text">Letters, digits, dashes/underscores.
+        {% if is_saved %}Change the name and Save to create a <strong>new</strong> scenario
+        (the original is kept).{% endif %}</div>
     </div>
     <div class="col-sm-6 col-md-8 d-flex gap-2">
       <button class="btn btn-primary" type="submit"><i class="bi bi-save"></i> Save</button>

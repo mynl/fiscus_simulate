@@ -1,16 +1,24 @@
-schema_version: '1.0'
+schema_version: '1.1'
 household:
   people:
-  - role: A
+  - name: A
     current_age: 60.0
-    pension_start_age: 67.0
-    annual_real_pension: 11000.0
-    pension_end_age: null
-  - role: B
+    income_streams:
+    - label: pension
+      annual_real: 11000.0
+      start_age: 67.0
+      end_age: null
+      inflation_linked: true
+      taxable_fraction: 1.0
+  - name: B
     current_age: 58.0
-    pension_start_age: 67.0
-    annual_real_pension: 9000.0
-    pension_end_age: null
+    income_streams:
+    - label: pension
+      annual_real: 9000.0
+      start_age: 67.0
+      end_age: null
+      inflation_linked: true
+      taxable_fraction: 1.0
   start_date: '2026-03-31'
   horizon_years: 40
   quarter_convention: calendar_qend
@@ -77,19 +85,6 @@ return_generator:
   - - 0.0
     - 0.1
     - 1.0
-income_streams:
-- owner: A
-  annual_real: 11000.0
-  start_age: 67.0
-  end_age: null
-  inflation_linked: true
-  taxable_fraction: 1.0
-- owner: B
-  annual_real: 9000.0
-  start_age: 67.0
-  end_age: null
-  inflation_linked: true
-  taxable_fraction: 1.0
 tax_rates:
   tax_deferred_withdrawal: 0.2
   interest: 0.2
