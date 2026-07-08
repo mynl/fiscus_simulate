@@ -26,7 +26,7 @@ import pandas as pd
 from ..config import from_yaml_str, to_yaml_str
 from ..models import RunConfig
 from ..preview import config_preview
-from . import configs
+from . import charts, configs
 from .grid import render_table
 from .views import format_config_error
 
@@ -204,6 +204,9 @@ def run_detail(run_id: str):
         view = "percentile"
     dist = _distribution_frame(loaded, view)
 
+    scale = "real" if request.args.get("scale") == "real" else "nominal"
+    labels = _period_labels(loaded.config)
+
     return render_template(
         "fiscus_simulate/run_detail.html",
         state=state,
@@ -213,6 +216,49 @@ def run_detail(run_id: str):
         dist_table=render_table(dist, name="outcome distribution") if dist is not None else None,
         view=view,
         has_joint=loaded.joint is not None,
+        scale=scale,
+        funnel=_funnel_block(loaded, scale, labels),
+        histogram=_histogram_block(loaded),
+        fail_timing=_fail_timing_block(loaded, labels),
+        has_failures=bool(loaded.failures["first_failure_count"].sum() > 0),
+    )
+
+
+@bp.route("/runs/compare")
+def runs_compare():
+    """Overlay two runs' net-worth funnels (median + p10/p90) and headline metrics."""
+    from .. import storage
+
+    state = _state()
+    a_id, b_id = request.args.get("a"), request.args.get("b")
+    try:
+        runs = storage.list_runs(runs_dir=state.runs_dir)
+    except FileNotFoundError:
+        runs = []
+    a = b = None
+    if a_id:
+        try:
+            a = storage.load_run(a_id, runs_dir=state.runs_dir)
+        except FileNotFoundError:
+            a = None
+    if b_id:
+        try:
+            b = storage.load_run(b_id, runs_dir=state.runs_dir)
+        except FileNotFoundError:
+            b = None
+
+    scale = "real" if request.args.get("scale") == "real" else "nominal"
+    block = headline = None
+    if a is not None and b is not None:
+        block = _compare_block(a, b, scale, _period_labels(a.config))
+        headline = [
+            (label, _headline_lookup(a, key), _headline_lookup(b, key))
+            for label, key in _COMPARE_ROWS
+        ]
+    return render_template(
+        "fiscus_simulate/compare.html",
+        state=state, runs=runs, a=a, b=b, a_id=a_id, b_id=b_id,
+        scale=scale, compare_block=block, headline=headline,
     )
 
 
@@ -237,7 +283,7 @@ def _fmt_money(x: float) -> str:
 def _headline_metrics(loaded) -> list[tuple[str, str]]:
     """Human-titled headline figures, most decision-relevant first."""
     m = {row["metric"]: row["value"] for _, row in loaded.summary.iterrows()}
-    sc = {int(r["percentile"]): r for _, r in loaded.scalars.iterrows()}
+    sc = {float(r["percentile"]): r for _, r in loaded.scalars.iterrows()}
     n = int(m.get("n_scenarios", 0))
     never = int(m.get("n_never_fail", 0))
     rows = [
@@ -248,8 +294,8 @@ def _headline_metrics(loaded) -> list[tuple[str, str]]:
         ("Scenarios that never fail", f"{never:,} of {n:,}"),
         ("Mean terminal net worth", _fmt_money(m.get("terminal.mean", 0))),
     ]
-    if 50 in sc:
-        rows.append(("Median terminal net worth", _fmt_money(sc[50]["terminal_nominal"])))
+    if 50.0 in sc:
+        rows.append(("Median terminal net worth", _fmt_money(sc[50.0]["terminal_nominal"])))
     return rows
 
 
@@ -274,8 +320,8 @@ def _distribution_frame(loaded, view: str):
         return None
     means = loaded.metadata.get("scalar_means", {})
     have_mean = bool(means)
-    pcts = [int(p) for p in src["percentile"]]
-    labels = (["mean"] if have_mean else []) + [f"p{p:02d}" for p in pcts]
+    pcts = [float(p) for p in src["percentile"]]
+    labels = (["mean"] if have_mean else []) + [f"p{p:g}" for p in pcts]
 
     cols: dict[str, object] = {"level": labels}
     for key, header, is_money in _DIST_COLS:
@@ -285,3 +331,109 @@ def _distribution_frame(loaded, view: str):
         arr = np.asarray(prefix + list(src[key]), dtype=float)
         cols[header] = np.rint(arr).astype("int64") if is_money else np.round(arr, 1)
     return pd.DataFrame(cols)
+
+
+# ------------------------------------------------------------------------ charts
+def _period_labels(config) -> list[str]:
+    """A ``"YYYY Qn"`` label per quarterly period, for chart hover/ticks."""
+    start = config.household.start_date
+    out = []
+    for t in range(config.household.n_periods):
+        m = start.month - 1 + 3 * t
+        out.append(f"{start.year + m // 12} Q{(m % 12) // 3 + 1}")
+    return out
+
+
+def _pcol(dfp, p: float, scale: str):
+    """A percentile column from the percentiles frame, deflated to real if asked."""
+    v = dfp[f"p{p:g}"].to_numpy(dtype=float)
+    return v / dfp["deflator"].to_numpy(dtype=float) if scale == "real" else v
+
+
+def _funnel_block(loaded, scale: str, labels: list[str]):
+    """Net-worth funnel: median line with p10–p90 and p30–p70 shaded bands."""
+    dfp = loaded.percentiles
+    x = list(range(len(dfp)))
+    data = [x] + [list(_pcol(dfp, p, scale)) for p in (90, 70, 50, 30, 10)]
+    spec = {
+        "type": "line", "yMoney": True, "xLabels": labels, "xLabel": "quarter",
+        "series": [
+            {"label": "p90", "stroke": "rgba(0,0,0,0)", "width": 0},
+            {"label": "p70", "stroke": "rgba(0,0,0,0)", "width": 0},
+            {"label": "median", "stroke": charts.LINE_MEDIAN, "width": 2},
+            {"label": "p30", "stroke": "rgba(0,0,0,0)", "width": 0},
+            {"label": "p10", "stroke": "rgba(0,0,0,0)", "width": 0},
+        ],
+        "bands": [[1, 5, charts.BAND_OUTER], [2, 4, charts.BAND_INNER]],
+    }
+    return charts.chart_block("chart-funnel", data, spec, height=360)
+
+
+def _histogram_block(loaded):
+    """Terminal-wealth histogram (bars over wealth bins)."""
+    h = loaded.terminal_hist
+    if h is None or len(h) == 0:
+        return None
+    centers = ((h["left"].to_numpy() + h["right"].to_numpy()) / 2.0)
+    data = [list(centers), list(h["count"].to_numpy(dtype=float))]
+    spec = {
+        "type": "bars", "xMoney": True, "yMoney": False, "xLabel": "terminal net worth",
+        "series": [{"label": "scenarios", "stroke": charts.BAR_FILL, "fill": charts.BAND_INNER}],
+    }
+    return charts.chart_block("chart-terminal", data, spec, height=300)
+
+
+def _fail_timing_block(loaded, labels: list[str]):
+    """First-failure counts aggregated by year (bars)."""
+    counts = loaded.failures["first_failure_count"].to_numpy(dtype=float)
+    horizon = len(counts) // 4
+    if horizon == 0:
+        return None
+    yearly = counts[: horizon * 4].reshape(horizon, 4).sum(axis=1)
+    year_labels = [labels[4 * y][:4] for y in range(horizon)]  # the calendar year
+    data = [list(range(horizon)), list(yearly)]
+    spec = {
+        "type": "bars", "yMoney": False, "xLabels": year_labels, "xLabel": "year",
+        "series": [{"label": "first failures", "stroke": charts.LINE_ALT, "fill": "rgba(214,51,132,0.25)"}],
+    }
+    return charts.chart_block("chart-failtiming", data, spec, height=280)
+
+
+# Headline rows reused by the comparison view: (label, summary-metric key).
+_COMPARE_ROWS = [
+    ("Overall success", "overall_success_rate"),
+    ("Plan fully funded", "success_rate.all_planned_funded"),
+    ("Portfolio never negative", "success_rate.portfolio_non_negative"),
+    ("Mean terminal net worth", "terminal.mean"),
+]
+
+
+def _headline_lookup(loaded, key: str) -> str:
+    m = {row["metric"]: row["value"] for _, row in loaded.summary.iterrows()}
+    v = m.get(key, 0.0)
+    return _fmt_money(v) if key.startswith("terminal.") else _fmt_pct(v)
+
+
+def _compare_block(a, b, scale: str, labels: list[str]):
+    """Overlay two runs' funnels: median + p10/p90 band each (A blue, B pink)."""
+    xa = list(range(len(a.percentiles)))
+    data = [
+        xa,
+        list(_pcol(a.percentiles, 90, scale)), list(_pcol(a.percentiles, 10, scale)),
+        list(_pcol(a.percentiles, 50, scale)),
+        list(_pcol(b.percentiles, 90, scale)), list(_pcol(b.percentiles, 10, scale)),
+        list(_pcol(b.percentiles, 50, scale)),
+    ]
+    spec = {
+        "type": "line", "yMoney": True, "xLabels": labels, "xLabel": "quarter",
+        "series": [
+            {"label": "A p90", "stroke": "rgba(0,0,0,0)", "width": 0},
+            {"label": "A p10", "stroke": "rgba(0,0,0,0)", "width": 0},
+            {"label": "A median", "stroke": charts.LINE_MEDIAN, "width": 2},
+            {"label": "B p90", "stroke": "rgba(0,0,0,0)", "width": 0},
+            {"label": "B p10", "stroke": "rgba(0,0,0,0)", "width": 0},
+            {"label": "B median", "stroke": charts.LINE_ALT, "width": 2},
+        ],
+        "bands": [[1, 2, charts.BAND_OUTER], [4, 5, "rgba(214,51,132,0.12)"]],
+    }
+    return charts.chart_block("chart-compare", data, spec, height=380)

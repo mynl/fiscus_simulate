@@ -53,6 +53,21 @@ def test_summary_invariants():
     assert sm.deflator[0] > 1.0 and np.all(np.diff(sm.deflator) > 0)
 
 
+def test_tail_refined_percentile_grid():
+    # Symmetric, dense in the tails, monotone; spans p0.1 .. p99.9.
+    assert PCTS[0] == 0.1 and PCTS[-1] == 99.9
+    assert 50.0 in PCTS and 10.0 in PCTS and 90.0 in PCTS
+    assert list(PCTS) == sorted(PCTS) and len(set(PCTS)) == len(PCTS)
+    assert all(PCTS[i] < PCTS[i + 1] for i in range(len(PCTS) - 1))
+
+
+def test_terminal_histogram_covers_all_scenarios():
+    res = run_simulation(_cfg(600, 300))
+    sm = res.summary
+    assert sm.terminal_hist_edges.shape[0] == sm.terminal_hist_counts.shape[0] + 1
+    assert int(sm.terminal_hist_counts.sum()) == 600  # every scenario binned (clipped)
+
+
 def test_real_below_nominal_when_inflation_positive():
     res = run_simulation(_cfg(300, 300))
     sm = res.summary

@@ -33,15 +33,46 @@
   {% endfor %}
 </div>
 
+{# --- Net-worth funnel --- #}
+<div class="d-flex align-items-center mb-2">
+  <h2 class="h5 mb-0">Net-worth funnel
+    <span class="text-muted small fw-normal">median with p10–p90 / p30–p70 bands</span></h2>
+  <div class="btn-group btn-group-sm ms-auto" role="group" aria-label="scale">
+    <a class="btn btn-outline-secondary {{ 'active' if scale == 'nominal' }}"
+       href="?view={{ view }}&amp;scale=nominal">Nominal</a>
+    <a class="btn btn-outline-secondary {{ 'active' if scale == 'real' }}"
+       href="?view={{ view }}&amp;scale=real">Real (today's $)</a>
+  </div>
+</div>
+<div class="mb-4">{{ funnel }}</div>
+
+<div class="row g-4 mb-4">
+  <div class="col-lg-6">
+    <h2 class="h6">Terminal-wealth distribution</h2>
+    {% if histogram %}{{ histogram }}{% else %}
+      <div class="alert alert-light border">No histogram for this run.</div>{% endif %}
+  </div>
+  <div class="col-lg-6">
+    <h2 class="h6">Failure timing <span class="text-muted small fw-normal">first shortfall, by year</span></h2>
+    {% if has_failures and fail_timing %}{{ fail_timing }}{% else %}
+      <div class="alert alert-success border small mb-0">No scenario ran out — nothing to time.</div>{% endif %}
+  </div>
+</div>
+
+<div class="mb-4">
+  <a class="btn btn-outline-primary btn-sm" href="{{ url_for('simulate.runs_compare', a=run.run_id) }}">
+    <i class="bi bi-bar-chart-steps"></i> Compare with another run</a>
+</div>
+
 {# --- Outcome distribution (transposed; csv-grid; two views) --- #}
 <div class="d-flex align-items-center mb-2">
   <h2 class="h5 mb-0">Outcome distribution
     <span class="text-muted small fw-normal">per household, across scenarios</span></h2>
   <div class="btn-group btn-group-sm ms-auto" role="group" aria-label="distribution view">
     <a class="btn btn-outline-secondary {{ 'active' if view == 'percentile' }}"
-       href="?view=percentile">Percentiles (per column)</a>
+       href="?view=percentile&amp;scale={{ scale }}">Percentiles (per column)</a>
     <a class="btn btn-outline-secondary {{ 'active' if view == 'terminal' }} {{ 'disabled' if not has_joint }}"
-       href="?view=terminal">By terminal net worth</a>
+       href="?view=terminal&amp;scale={{ scale }}">By terminal net worth</a>
   </div>
 </div>
 <p class="text-muted small mb-2">
@@ -79,6 +110,17 @@
 {% endblock %}
 
 {% block glossary %}
+<p class="mb-1"><strong>Net-worth funnel.</strong> At each quarter, scenarios are sorted
+and the percentile lines drawn: the shaded envelopes are p10–p90 (outer) and p30–p70
+(inner), with the median in the middle. The early rise is the pre-retirement accumulation
+phase; the drawdown begins at retirement. <em>Real</em> divides each quarter by the
+inflation deflator (1+π)<sup>t</sup>. Bands are per-quantile across scenarios — a single
+household follows one path *inside* the funnel, not a band.</p>
+<p class="mb-1"><strong>Terminal-wealth distribution.</strong> Histogram of ending net
+worth across scenarios (40 bins). The top ~1% is clipped into the last bin so outliers
+don't squash the visible mass. <strong>Failure timing</strong> counts the scenarios whose
+*first* shortfall lands in each year — the shape of *when* plans break (the seam a future
+mortality weighting reweights by survival).</p>
 <p class="mb-1"><strong>Success criteria</strong> (all coincide in V1, diverge in V2):
 <em>Overall success</em> = every criterion holds on a path. <em>Plan fully funded</em> =
 planned spending is met every quarter (no shortfall). <em>Portfolio never negative</em> =

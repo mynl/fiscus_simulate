@@ -69,6 +69,7 @@ class LoadedRun:
     failures: pd.DataFrame
     scalars: pd.DataFrame
     joint: pd.DataFrame | None = None  # terminal-NW-ranked outcomes (None on legacy runs)
+    terminal_hist: pd.DataFrame | None = None  # terminal-wealth histogram (None on legacy runs)
 
 
 # ------------------------------------------------------------------ reproducibility
@@ -108,11 +109,22 @@ def summary_checksum(summary: SimulationSummary) -> str:
 
 # ------------------------------------------------------------------ dataframe views
 def _percentiles_frame(sm: SimulationSummary) -> pd.DataFrame:
-    cols = {f"p{p}": sm.net_worth_pctiles_nominal[i] for i, p in enumerate(sm.percentiles)}
+    # Column per percentile named p{value:g} (p0.1 … p50 … p99.9), rows = periods.
+    cols = {f"p{p:g}": sm.net_worth_pctiles_nominal[i] for i, p in enumerate(sm.percentiles)}
     df = pd.DataFrame(cols)
     df.insert(0, "period", np.arange(len(df)))
     df["deflator"] = sm.deflator
     return df
+
+
+def _terminal_hist_frame(sm: SimulationSummary) -> pd.DataFrame:
+    """Terminal-wealth histogram: one row per bin (left edge, right edge, count)."""
+    edges = sm.terminal_hist_edges
+    return pd.DataFrame({
+        "left": edges[:-1],
+        "right": edges[1:],
+        "count": sm.terminal_hist_counts,
+    })
 
 
 def _failures_frame(sm: SimulationSummary) -> pd.DataFrame:
@@ -185,6 +197,7 @@ def save_run(result, config: RunConfig, runs_dir: Path | None = None,
     _failures_frame(sm).to_parquet(d / "failures.parquet", index=False)
     _scalars_frame(sm).to_parquet(d / "scalars.parquet", index=False)
     _joint_frame(sm).to_parquet(d / "joint.parquet", index=False)
+    _terminal_hist_frame(sm).to_parquet(d / "terminal_hist.parquet", index=False)
     if config.simulation.persist_sample_paths > 0:
         _paths_frame(result.sample_paths).to_parquet(d / "paths.parquet", index=False)
 
@@ -218,6 +231,7 @@ def load_run(run_id: str, runs_dir: Path | None = None) -> LoadedRun:
         raise FileNotFoundError(f"no run {run_id!r} in {d.parent}")
     metadata = json.loads((d / "metadata.json").read_text(encoding="utf-8"))
     joint_path = d / "joint.parquet"
+    hist_path = d / "terminal_hist.parquet"
     return LoadedRun(
         run_id=run_id,
         metadata=metadata,
@@ -227,6 +241,7 @@ def load_run(run_id: str, runs_dir: Path | None = None) -> LoadedRun:
         failures=pd.read_parquet(d / "failures.parquet"),
         scalars=pd.read_parquet(d / "scalars.parquet"),
         joint=pd.read_parquet(joint_path) if joint_path.exists() else None,
+        terminal_hist=pd.read_parquet(hist_path) if hist_path.exists() else None,
     )
 
 

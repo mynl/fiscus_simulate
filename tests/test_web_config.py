@@ -126,10 +126,25 @@ def test_run_launch_persists_and_views(client, tmp_path):
     assert "Overall success (every criterion met)" in detail  # human headline titles
     assert "Taxes paid" in detail  # tax outcomes surfaced in the distribution
     assert "Glossary" in detail    # self-documenting notes present
+    # Charts render (uPlot blocks present).
+    assert "Net-worth funnel" in detail
+    assert "fiscusChart" in detail and "chart-funnel" in detail and "chart-terminal" in detail
+    # Real scale toggle renders.
+    assert client.get(f"/runs/{run_id}?scale=real").status_code == 200
     # Terminal-net-worth-ranked view is available and renders.
     terminal = client.get(f"/runs/{run_id}?view=terminal").get_data(as_text=True)
     assert "Each row is one real scenario" in terminal
     assert client.get("/runs").status_code == 200
+
+
+def test_compare_two_runs(client):
+    client.post("/config", data={"name": "cmpa", "yaml": _small_config_yaml()})
+    client.post("/config", data={"name": "cmpb", "yaml": _small_config_yaml()})
+    a = client.get(client.post("/config/cmpa/run").headers["Location"] + "/status").get_json()["run_id"]
+    b = client.get(client.post("/config/cmpb/run").headers["Location"] + "/status").get_json()["run_id"]
+    page = client.get(f"/runs/compare?a={a}&b={b}").get_data(as_text=True)
+    assert "chart-compare" in page and "fiscusChart" in page
+    assert "Overall success" in page  # headline comparison table
 
 
 def test_delete_run(client, tmp_path):

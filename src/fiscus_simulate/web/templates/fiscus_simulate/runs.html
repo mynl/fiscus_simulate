@@ -9,7 +9,9 @@
 {% block content %}
 <div class="d-flex align-items-center mb-3">
   <h1 class="h3 mb-0">Runs</h1>
-  <a class="btn btn-outline-secondary btn-sm ms-auto" href="{{ url_for('simulate.dashboard') }}">
+  <a class="btn btn-outline-primary btn-sm ms-auto" href="{{ url_for('simulate.runs_compare') }}">
+    <i class="bi bi-bar-chart-steps"></i> Compare</a>
+  <a class="btn btn-outline-secondary btn-sm ms-2" href="{{ url_for('simulate.dashboard') }}">
     <i class="bi bi-arrow-left"></i> Dashboard</a>
 </div>
 

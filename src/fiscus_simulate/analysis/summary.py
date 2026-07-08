@@ -10,7 +10,23 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-PCTS: tuple[int, ...] = (1, 5, 10, 25, 50, 75, 90, 95, 99)
+def _tail_refined_pcts() -> tuple[float, ...]:
+    """Symmetric, tail-dense percentile grid (percent): p0.1 … p99.9.
+
+    Notes
+    -----
+    Dense in the tails, coarse in the middle — where the action is for ruin analysis:
+    0.1→1 by 0.1, 1→10 by 1, 10→90 by 10, 90→99 by 1, 99→99.9 by 0.1 (deduped endpoints).
+    """
+    lo_tenths = [round(0.1 * i, 1) for i in range(1, 10)]      # 0.1 .. 0.9
+    ones_lo = [float(v) for v in range(1, 11)]                 # 1 .. 10
+    tens = [float(v) for v in range(20, 91, 10)]               # 20 .. 90
+    ones_hi = [float(v) for v in range(91, 100)]               # 91 .. 99
+    hi_tenths = [round(99 + 0.1 * i, 1) for i in range(1, 10)]  # 99.1 .. 99.9
+    return tuple(sorted(set(lo_tenths + ones_lo + tens + ones_hi + hi_tenths)))
+
+
+PCTS: tuple[float, ...] = _tail_refined_pcts()
 
 
 @dataclass
@@ -18,7 +34,7 @@ class SimulationSummary:
     """Compact summary of a simulation run (NumPy arrays; no per-path cube)."""
 
     n_scenarios: int
-    percentiles: tuple[int, ...]
+    percentiles: tuple[float, ...]
     success_rates: dict[str, float]
     overall_success_rate: float
     failure_timing: np.ndarray            # (T,) count of paths whose first failure is at t
@@ -31,6 +47,8 @@ class SimulationSummary:
     scalar_pctiles: dict[str, np.ndarray] = field(default_factory=dict)
     scalar_means: dict[str, float] = field(default_factory=dict)
     joint_by_terminal: dict[str, np.ndarray] = field(default_factory=dict)
+    terminal_hist_edges: np.ndarray = field(default_factory=lambda: np.zeros(0))  # (n_bin+1,)
+    terminal_hist_counts: np.ndarray = field(default_factory=lambda: np.zeros(0))  # (n_bin,)
 
     @property
     def net_worth_pctiles_real(self) -> np.ndarray:
@@ -121,6 +139,15 @@ def summarize(
         "total_sales": total_sales[idx],
     }
 
+    # Terminal-wealth histogram for the results chart. Clip the top 1% into the last bin
+    # so a few huge outliers don't squash the visible mass (noted in the glossary).
+    hist_lo = min(0.0, float(terminal_net_worth.min()))
+    hist_hi = float(np.percentile(terminal_net_worth, 99))
+    if hist_hi <= hist_lo:  # degenerate (all equal) — nudge so histogram has width
+        hist_hi = hist_lo + 1.0
+    clipped = np.clip(terminal_net_worth, hist_lo, hist_hi)
+    hist_counts, hist_edges = np.histogram(clipped, bins=40, range=(hist_lo, hist_hi))
+
     return SimulationSummary(
         n_scenarios=S,
         percentiles=PCTS,
@@ -136,4 +163,6 @@ def summarize(
         scalar_pctiles=scalar_pctiles,
         scalar_means=scalar_means,
         joint_by_terminal=joint_by_terminal,
+        terminal_hist_edges=hist_edges,
+        terminal_hist_counts=hist_counts,
     )

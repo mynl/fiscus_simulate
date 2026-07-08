@@ -32,7 +32,7 @@ def test_save_load_round_trip(tmp_path):
     res = run_simulation(cfg)
     d = save_run(res, cfg, runs_dir=tmp_path, run_id="run-a")
     assert (d / "config.yaml").exists()
-    for f in ("summary", "percentiles", "failures", "scalars", "joint"):
+    for f in ("summary", "percentiles", "failures", "scalars", "joint", "terminal_hist"):
         assert (d / f"{f}.parquet").exists()
 
     loaded = load_run("run-a", runs_dir=tmp_path)
@@ -48,6 +48,12 @@ def test_save_load_round_trip(tmp_path):
     assert list(loaded.joint["total_tax"]) == list(res.summary.joint_by_terminal["total_tax"])
     assert "scalar_means" in loaded.metadata
     assert loaded.metadata["scalar_means"]["total_tax"] == res.summary.scalar_means["total_tax"]
+    # Tail-refined percentile columns present (dense tails, p{value:g} naming).
+    assert "p0.1" in loaded.percentiles.columns and "p99.9" in loaded.percentiles.columns
+    assert "p50" in loaded.percentiles.columns
+    # Terminal-wealth histogram round-trips.
+    assert loaded.terminal_hist is not None
+    assert loaded.terminal_hist["count"].sum() == res.summary.n_scenarios
 
 
 def test_joint_terminal_rows_are_monotone_in_terminal(tmp_path):

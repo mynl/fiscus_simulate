@@ -1,0 +1,73 @@
+{% extends "fiscus_simulate/base.html" %}
+{% block title %}Compare runs &middot; fiscus_simulate{% endblock %}
+
+{% block help %}
+  <p class="text-muted small mb-0">Pick two runs to overlay their net-worth funnels
+  (median + p10–p90) and compare headline outcomes. Useful for scenario thinking — vary
+  one assumption and see the difference.</p>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center mb-3">
+  <h1 class="h3 mb-0">Compare runs</h1>
+  <a class="btn btn-outline-secondary btn-sm ms-auto" href="{{ url_for('simulate.runs_list') }}">
+    <i class="bi bi-arrow-left"></i> Runs</a>
+</div>
+
+<form method="get" class="row g-2 align-items-end mb-4">
+  <div class="col-sm-5">
+    <label class="form-label small mb-1">Run A</label>
+    <select class="form-select" name="a">
+      <option value="">— select —</option>
+      {% for r in runs %}<option value="{{ r.run_id }}" {{ 'selected' if r.run_id == a_id }}>{{ r.run_id }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-sm-5">
+    <label class="form-label small mb-1">Run B</label>
+    <select class="form-select" name="b">
+      <option value="">— select —</option>
+      {% for r in runs %}<option value="{{ r.run_id }}" {{ 'selected' if r.run_id == b_id }}>{{ r.run_id }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-sm-2">
+    <button class="btn btn-primary w-100" type="submit">Compare</button>
+  </div>
+</form>
+
+{% if compare_block %}
+  <div class="d-flex align-items-center mb-2">
+    <h2 class="h5 mb-0">Net-worth funnel <span class="text-muted small fw-normal">
+      <span style="color:#0d6efd;">A</span> vs <span style="color:#d63384;">B</span> — median + p10–p90</span></h2>
+    <div class="btn-group btn-group-sm ms-auto" role="group">
+      <a class="btn btn-outline-secondary {{ 'active' if scale == 'nominal' }}"
+         href="{{ url_for('simulate.runs_compare', a=a_id, b=b_id, scale='nominal') }}">Nominal</a>
+      <a class="btn btn-outline-secondary {{ 'active' if scale == 'real' }}"
+         href="{{ url_for('simulate.runs_compare', a=a_id, b=b_id, scale='real') }}">Real</a>
+    </div>
+  </div>
+  <div class="mb-4">{{ compare_block }}</div>
+
+  <table class="table table-sm" style="max-width:720px;">
+    <thead><tr><th></th>
+      <th class="text-end" style="color:#0d6efd;">A</th>
+      <th class="text-end" style="color:#d63384;">B</th></tr></thead>
+    <tbody>
+      {% for label, av, bv in headline %}
+        <tr><td>{{ label }}</td><td class="text-end">{{ av }}</td><td class="text-end">{{ bv }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="small text-muted">A = {{ a_id }} &middot; B = {{ b_id }}</div>
+{% elif a_id or b_id %}
+  <div class="alert alert-light border">Select two runs to compare.</div>
+{% endif %}
+{% endblock %}
+
+{% block glossary %}
+{% if compare_block %}
+<p class="mb-0"><strong>Comparison funnel.</strong> Each run's median net-worth path with
+its p10–p90 band, overlaid — A in blue, B in pink. Same axes and scale (nominal or real
+via the deflator). Read the gap between medians for the central effect and the band
+overlap for how much the distributions differ.</p>
+{% endif %}
+{% endblock %}

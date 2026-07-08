@@ -16,6 +16,9 @@
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  {# uPlot — fast canvas charts with a live hover cursor (same lib as fiscus_project). #}
+  <link href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js"></script>
   <style>
     body { background:#fff; }
     .navbar-brand img { height:32px; width:auto; margin-right:.5rem; }
@@ -91,6 +94,55 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  {# fiscusChart: builds a uPlot line/bar chart from JSON data+spec (see web/charts.py),
+     adding the hover/axis formatter functions JSON can't carry. #}
+  <script>
+  window.fiscusChart = function (elId, data, spec) {
+    var el = document.getElementById(elId);
+    if (!el || !window.uPlot) return;
+    function money(v) {
+      if (v == null) return "";
+      var a = Math.abs(v);
+      if (a >= 1e6) return (v / 1e6).toFixed(2) + "M";
+      if (a >= 1e3) return (v / 1e3).toFixed(0) + "k";
+      return Math.round(v).toString();
+    }
+    var xLabels = spec.xLabels || null;
+    var yMoney = spec.yMoney !== false;          // default: y is money
+    var xMoney = spec.xMoney === true;           // opt-in: x is money (histogram)
+    function yVal(u, v) { return v == null ? "" : (yMoney ? Math.round(v).toLocaleString() : v); }
+    var series = [{
+      label: spec.xLabel || "",
+      value: function (u, v, si, i) { return xLabels && xLabels[i] != null ? xLabels[i] : (xMoney ? money(v) : v); }
+    }];
+    (spec.series || []).forEach(function (s) {
+      var ser = { label: s.label, stroke: s.stroke || "#0d6efd", width: s.width || 1.6,
+                  value: function (u, v) { return yVal(u, v); } };
+      if (s.fill) ser.fill = s.fill;
+      if (s.dash) ser.dash = s.dash;
+      if (spec.type === "bars") ser.paths = uPlot.paths.bars({ size: [0.9, 60] });
+      series.push(ser);
+    });
+    var opts = {
+      width: el.clientWidth || 600, height: spec.height || 320, series: series,
+      legend: { live: true },
+      cursor: { drag: { x: true, y: false } },
+      scales: { x: { time: false } },
+      axes: [
+        { values: function (u, vals) {
+            return vals.map(function (v) {
+              if (xLabels) { var i = Math.round(v); return xLabels[i] != null ? xLabels[i] : ""; }
+              return xMoney ? money(v) : v;
+            });
+          } },
+        { values: function (u, vals) { return vals.map(function (v) { return yMoney ? money(v) : v; }); } }
+      ]
+    };
+    if (spec.bands) opts.bands = spec.bands.map(function (b) { return { series: [b[0], b[1]], fill: b[2] }; });
+    var u = new uPlot(opts, data, el);
+    window.addEventListener("resize", function () { u.setSize({ width: el.clientWidth || 600, height: spec.height || 320 }); });
+  };
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

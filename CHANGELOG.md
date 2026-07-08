@@ -3,6 +3,43 @@
 All notable changes to `fiscus_simulate`. Semantic versioning from 1.0.0; each build
 stage bumps the minor. Newest first.
 
+## 1.6.0 — 2026-07-08
+
+Stage 7: results dashboard & charts.
+
+### Added
+- **uPlot charts** (CDN `uplot@1.6.30`, matching `fiscus_project`) with a live hover
+  cursor. A `web/charts.py` builder emits JSON `data`+`spec`; a single `fiscusChart` JS
+  helper in `base.html` adds the hover/axis formatter functions. Charts are fed only from
+  the persisted Parquet summaries.
+- **Net-worth funnel** on the run view: median with p10–p90 and p30–p70 shaded bands over
+  the 160 quarters (accumulation ramp then drawdown), **nominal / real toggle** via the
+  stored deflator.
+- **Terminal-wealth histogram** (40 bins; top ~1% clipped into the last bin) — computed at
+  summarize time and persisted as `terminal_hist.parquet`.
+- **Failure-timing** chart: first-shortfall counts by year (or a "nobody ran out" note).
+- **Run comparison** (`/runs/compare`): overlay two runs' funnels (median + p10–p90, A
+  blue / B pink) with a headline comparison table; entry points on the runs list and each
+  run view.
+- **Tail-refined percentile grid**: `PCTS` is now dense in the tails (p0.1…p99.9:
+  0.1→1 by 0.1, 1→10 by 1, 10→90 by 10, then symmetric). Percentile Parquet columns are
+  named `p{value:g}` (`p0.1`, `p50`, `p99.9`). Glossaries updated for the funnel,
+  histogram, failure-timing and comparison (the rule).
+
+### Changed
+- `analysis/summary.py` gains the histogram and the finer grid; `storage` persists/reloads
+  `terminal_hist.parquet` (`LoadedRun.terminal_hist`, `None` on legacy runs). The
+  summary checksum changes with the new percentile set (expected, not a regression).
+
+### Deferred
+- Representative individual paths overlay (needs `persist_sample_paths > 0`) — a small
+  follow-up; the funnel already conveys the distribution.
+
+### Tests
+- Tail grid properties; terminal histogram covers all scenarios; percentile columns
+  (`p0.1`/`p99.9`) round-trip; histogram round-trips; run view renders the uPlot funnel /
+  terminal / failure blocks and the real-scale toggle; two-run comparison renders. 77 green.
+
 ## 1.5.4 — 2026-07-08
 
 Pre-retirement accumulation: model the working years between now and retirement.

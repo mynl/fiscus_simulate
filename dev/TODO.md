@@ -15,14 +15,10 @@ Stage roadmap (one commit + minor bump per stage). Detail in `plan-overview.md`.
 - [x] **1.5.0 Stage 6** — web configuration workflow: YAML config editor + validation,
       named saved-config store, background run launcher + status page, run views.
       (csv-grid deferred to Stage 7.)
-- [ ] **1.6.0 Stage 7** — results site + charts (funnel, terminal wealth, failure
-      dates, representative paths, comparison). **Decisions from author (2026-07-08):**
-      - Charts use **uPlot** (same as `fiscus_project` — fast canvas lib, nice hover).
-      - **Percentile grid is tail-refined**, symmetric: 0.001→0.01 by 0.001,
-        0.01→0.1 by 0.01, 0.1→0.9 by 0.1, 0.9→0.99 by 0.01, 0.99→0.999 by 0.001
-        (i.e. p0.1..p99.9, dense in the tails). Replaces the current 9-point `PCTS`;
-        ripples through `summary` percentile naming, `percentiles`/`scalars`/`joint`
-        Parquet column naming (drop `p{int}` scheme), and the distribution-table labels.
+- [x] **1.6.0 Stage 7** — results charts: uPlot funnel (nominal/real), terminal-wealth
+      histogram, failure-timing, run comparison; tail-refined percentile grid
+      (`p{value:g}` naming). Representative-paths overlay deferred (needs
+      `persist_sample_paths`).
 - [ ] **1.7.0 Stage 8** — sequence-risk prototype (permute a fixed return environment,
       conditional failure `q_i`, order-share `s_order`).
 
