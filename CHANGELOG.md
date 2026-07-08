@@ -3,6 +3,29 @@
 All notable changes to `fiscus_simulate`. Semantic versioning from 1.0.0; each build
 stage bumps the minor. Newest first.
 
+## 1.5.3 — 2026-07-08
+
+### Changed
+- **csv-grid is now a normal PyPI dependency** (`csv-grid>=3`) of the `web` extra, and
+  added to `dev` so tests exercise the real grid renderer (not the fallback). The
+  Bootstrap-table fallback in `web/grid.py` is kept as defensive-only for headless
+  installs. `uv.lock` updated (resolves from PyPI — cross-platform).
+
+### Added
+- **Delete a saved configuration from the dashboard** (red trash after Run). It unlinks
+  the file directly — no load/validate — so a config that no longer parses (e.g. an older
+  schema that now fails pydantic) can still be removed without opening the editor.
+
+### Tests
+- Dashboard offers a config delete; an unparseable config can still be deleted. 72 tests.
+
+### Notes (recorded for Stage 7 / V2, not yet built)
+- Stage 7 charts will use **uPlot** (same lib as `fiscus_project`).
+- Stage 7 percentile grid is **tail-refined** (p0.1..p99.9, dense in the tails).
+- **Survival-weighted failure** (mortality-adjusted P(ruin before death)) is flagged for
+  the V2 mortality work — an unconditional failure rate overweights late ruin the
+  household is unlikely to live to see.
+
 ## 1.5.2 — 2026-07-08
 
 Friendlier run results, delete-a-run, and self-documenting glossaries.

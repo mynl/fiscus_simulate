@@ -63,7 +63,7 @@ wheels = [
 
 [[package]]
 name = "fiscus-simulate"
-version = "1.3.0"
+version = "1.5.2"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
@@ -75,6 +75,7 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "csv-grid" },
     { name = "flask" },
     { name = "pytest" },
     { name = "ruff" },
@@ -88,7 +89,8 @@ web = [
 
 [package.metadata]
 requires-dist = [
-    { name = "csv-grid", marker = "extra == 'web'" },
+    { name = "csv-grid", marker = "extra == 'dev'", specifier = ">=3" },
+    { name = "csv-grid", marker = "extra == 'web'", specifier = ">=3" },
     { name = "flask", marker = "extra == 'dev'", specifier = ">=3" },
     { name = "flask", marker = "extra == 'web'", specifier = ">=3" },
     { name = "numpy", specifier = ">=1.26" },

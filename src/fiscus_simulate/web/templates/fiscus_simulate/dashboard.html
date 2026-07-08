@@ -22,11 +22,18 @@
     {% if saved %}
       <div class="list-group">
         {% for name in saved %}
-          <div class="list-group-item d-flex align-items-center">
+          <div class="list-group-item d-flex align-items-center gap-2">
             <a class="flex-grow-1 text-decoration-none" href="{{ url_for('simulate.config_edit', name=name) }}">
               <i class="bi bi-file-earmark-text me-1"></i>{{ name }}</a>
             <form method="post" action="{{ url_for('simulate.config_run', name=name) }}" class="d-inline js-run-form">
               <button class="btn btn-sm btn-success" type="submit"><i class="bi bi-play-fill"></i> Run</button>
+            </form>
+            {# Delete works straight from the filesystem — no load/validate — so a config
+               that no longer parses can still be removed here. #}
+            <form method="post" action="{{ url_for('simulate.config_delete', name=name) }}" class="d-inline"
+                  onsubmit="return confirm('Delete configuration {{ name }}?');">
+              <button class="btn btn-sm btn-outline-danger" type="submit" title="Delete configuration">
+                <i class="bi bi-trash"></i></button>
             </form>
           </div>
         {% endfor %}

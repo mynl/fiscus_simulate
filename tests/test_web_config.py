@@ -91,6 +91,22 @@ def test_delete_config(client, tmp_path):
     assert not configs.exists(tmp_path / "configs", "temp")
 
 
+def test_dashboard_offers_config_delete(client):
+    client.post("/config", data={"name": "shown", "yaml": _small_config_yaml()})
+    body = client.get("/").get_data(as_text=True)
+    assert "/config/shown/delete" in body  # trash button present on the dashboard
+
+
+def test_delete_unparseable_config(client, tmp_path):
+    """A config that no longer validates can still be deleted (filesystem unlink)."""
+    (tmp_path / "configs").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "configs" / "legacy.yaml").write_text("schema_version: '0.0'\nbroken: [", encoding="utf-8")
+    assert "legacy" in configs.list_configs(tmp_path / "configs")
+    resp = client.post("/config/legacy/delete")
+    assert resp.status_code == 302
+    assert "legacy" not in configs.list_configs(tmp_path / "configs")
+
+
 # --------------------------------------------------------------------------- running
 def test_run_launch_persists_and_views(client, tmp_path):
     client.post("/config", data={"name": "runme", "yaml": _small_config_yaml()})

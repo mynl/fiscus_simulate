@@ -16,16 +16,27 @@ Stage roadmap (one commit + minor bump per stage). Detail in `plan-overview.md`.
       named saved-config store, background run launcher + status page, run views.
       (csv-grid deferred to Stage 7.)
 - [ ] **1.6.0 Stage 7** — results site + charts (funnel, terminal wealth, failure
-      dates, representative paths, comparison).
+      dates, representative paths, comparison). **Decisions from author (2026-07-08):**
+      - Charts use **uPlot** (same as `fiscus_project` — fast canvas lib, nice hover).
+      - **Percentile grid is tail-refined**, symmetric: 0.001→0.01 by 0.001,
+        0.01→0.1 by 0.01, 0.1→0.9 by 0.1, 0.9→0.99 by 0.01, 0.99→0.999 by 0.001
+        (i.e. p0.1..p99.9, dense in the tails). Replaces the current 9-point `PCTS`;
+        ripples through `summary` percentile naming, `percentiles`/`scalars`/`joint`
+        Parquet column naming (drop `p{int}` scheme), and the distribution-table labels.
 - [ ] **1.7.0 Stage 8** — sequence-risk prototype (permute a fixed return environment,
       conditional failure `q_i`, order-share `s_order`).
 
 ## Parked / open questions
 - Cross-site nav to `fiscus_project` in V1, or matching style now + cross-links later?
   (Stage 6.)
-- csv-grid on the VPS: publish/pin vs. installed system-wide (deferred to Stage 7,
-  where the results tables first use `csv_grid.to_html`).
 - Transparent / dark-mode logo variant (Stage 6/7 polish).
+- **Mortality-adjusted / survival-weighted failure probability** (author flag, 2026-07-08).
+  An unconditional "prob of default" overweights *late* failures the household is unlikely
+  to live to see — a year-40 ruin matters little at a ~5% survival probability. When
+  mortality curves land (V2), report **survival-weighted** failure = P(ruin before death),
+  and probably a per-period conditional-on-alive failure hazard, not just the raw path
+  failure rate. **Remind the author when building mortality.** Pairs with the sequence-risk
+  work — failure timing already exists, this reweights it. See parked V2 (mortality).
 
 ## Parked V2 (documented extension points, do NOT partially build)
 Mortality/morbidity, dynamic spending mix, spending cuts, utility valuation, detailed

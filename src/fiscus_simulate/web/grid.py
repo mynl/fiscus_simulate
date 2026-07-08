@@ -2,13 +2,9 @@
 
 csv-grid (``from csv_grid import to_html``) renders a DataFrame as a self-contained,
 interactive grid — sort, filter, fzf search, export — and is built to handle large CSVs.
-It is an **optional** dependency (the ``web`` extra; installed on the VPS). On a host
-without it — a fresh dev venv, headless CI — we fall back to a static Bootstrap table so
-the page still works and tests stay hermetic.
-
-Enable the rich grid locally (author's machine) with::
-
-    uv pip install --editable c:/s/ai/csv-viewer/python
+It is a normal PyPI dependency of the ``web`` extra (``csv-grid``). The static
+Bootstrap-table fallback here is defensive only — for a headless install that pulled the
+engine without the ``web`` extra — so the page still renders and tests stay hermetic.
 
 Kept out of the engine import path; the web layer is the only caller.
 """
