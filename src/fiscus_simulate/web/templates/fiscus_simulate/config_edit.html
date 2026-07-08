@@ -99,3 +99,22 @@
   });
 </script>
 {% endblock %}
+
+{% block glossary %}
+{% if preview %}
+<p class="mb-1"><strong>Household wealth</strong> = sum of all account × asset-class
+balances. <strong>Portfolio income / yr</strong> = Σ (balance × annual income yield)
+across every account (gross, before tax). <strong>Est. tax now</strong> applies the
+taxable account's rates only: dividend rate × taxable-stock income + interest rate ×
+taxable bond/cash income (tax-deferred and tax-free income is untaxed on accrual).</p>
+<p class="mb-1"><strong>Pension income / yr</strong> sums every person's income streams
+at their real amounts; <em>active now</em> counts only streams whose owner has already
+reached <code>start_age</code>; <em>starts in N yr</em> is the wait to the earliest
+not-yet-started stream.</p>
+<p class="mb-0"><strong>Withdrawal rate.</strong> <em>Gross</em> = planned spending ÷
+household wealth (the classic anchor). <em>Net now</em> = (planned spending − income
+available today) ÷ wealth, where income today is pensions active now plus gross portfolio
+income — the real early drawdown before later pensions start. Approximate: it uses gross
+portfolio income and ignores that tax-deferred income isn't freely spendable until sold.</p>
+{% endif %}
+{% endblock %}

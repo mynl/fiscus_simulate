@@ -32,7 +32,7 @@ def test_save_load_round_trip(tmp_path):
     res = run_simulation(cfg)
     d = save_run(res, cfg, runs_dir=tmp_path, run_id="run-a")
     assert (d / "config.yaml").exists()
-    for f in ("summary", "percentiles", "failures", "scalars"):
+    for f in ("summary", "percentiles", "failures", "scalars", "joint"):
         assert (d / f"{f}.parquet").exists()
 
     loaded = load_run("run-a", runs_dir=tmp_path)
@@ -43,6 +43,18 @@ def test_save_load_round_trip(tmp_path):
     # percentile values survive the round trip
     p50 = res.summary.net_worth_pctiles_nominal[res.summary.percentiles.index(50)]
     assert np.allclose(loaded.percentiles["p50"].to_numpy(), p50)
+    # joint (terminal-ranked) frame + mean metadata survive
+    assert loaded.joint is not None
+    assert list(loaded.joint["total_tax"]) == list(res.summary.joint_by_terminal["total_tax"])
+    assert "scalar_means" in loaded.metadata
+    assert loaded.metadata["scalar_means"]["total_tax"] == res.summary.scalar_means["total_tax"]
+
+
+def test_joint_terminal_rows_are_monotone_in_terminal(tmp_path):
+    """Terminal-ranked rows read across as real scenarios: terminal NW is non-decreasing."""
+    res = run_simulation(_cfg())
+    tn = res.summary.joint_by_terminal["terminal_nominal"]
+    assert np.all(np.diff(tn) >= 0)
 
 
 def test_checksum_reproducible(tmp_path):

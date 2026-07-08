@@ -20,10 +20,14 @@ from flask import (
     url_for,
 )
 
+import numpy as np
+import pandas as pd
+
 from ..config import from_yaml_str, to_yaml_str
 from ..models import RunConfig
 from ..preview import config_preview
 from . import configs
+from .grid import render_table
 from .views import format_config_error
 
 bp = Blueprint("simulate", __name__)
@@ -186,7 +190,7 @@ def runs_list():
 
 @bp.route("/runs/<run_id>")
 def run_detail(run_id: str):
-    """Minimal run view (Stage 6): metadata + summary metrics. Charts land in Stage 7."""
+    """Run view: headline metrics, the outcome distribution, then reproducibility."""
     from .. import storage
 
     state = _state()
@@ -194,41 +198,90 @@ def run_detail(run_id: str):
         loaded = storage.load_run(run_id, runs_dir=state.runs_dir)
     except FileNotFoundError:
         abort(404)
-    metrics = [
-        (row["metric"], row["value"]) for _, row in loaded.summary.iterrows()
-    ]
+
+    view = request.args.get("view", "percentile")
+    if view == "terminal" and loaded.joint is None:
+        view = "percentile"
+    dist = _distribution_frame(loaded, view)
+
     return render_template(
         "fiscus_simulate/run_detail.html",
         state=state,
         run=loaded,
         metadata=loaded.metadata,
-        metrics=metrics,
-        scalars=_scalar_distribution(loaded.scalars),
+        headline=_headline_metrics(loaded),
+        dist_table=render_table(dist, name="outcome distribution") if dist is not None else None,
+        view=view,
+        has_joint=loaded.joint is not None,
     )
 
 
-# Scalar outcomes to surface (column in scalars.parquet, display label, is-money).
-_SCALAR_ROWS = [
-    ("total_tax", "Taxes paid (lifetime)", True),
-    ("total_sales", "Assets sold (lifetime)", True),
-    ("terminal_nominal", "Terminal net worth (nominal)", True),
+@bp.route("/runs/<run_id>/delete", methods=["POST"])
+def run_delete(run_id: str):
+    """Delete a persisted run and its directory."""
+    from .. import storage
+
+    storage.delete_run(run_id, runs_dir=_state().runs_dir)
+    flash(f"Deleted run {run_id}.", "success")
+    return redirect(url_for("simulate.runs_list"))
+
+
+def _fmt_pct(x: float) -> str:
+    return f"{100 * x:.1f}%"
+
+
+def _fmt_money(x: float) -> str:
+    return f"{x:,.0f}"
+
+
+def _headline_metrics(loaded) -> list[tuple[str, str]]:
+    """Human-titled headline figures, most decision-relevant first."""
+    m = {row["metric"]: row["value"] for _, row in loaded.summary.iterrows()}
+    sc = {int(r["percentile"]): r for _, r in loaded.scalars.iterrows()}
+    n = int(m.get("n_scenarios", 0))
+    never = int(m.get("n_never_fail", 0))
+    rows = [
+        ("Overall success (every criterion met)", _fmt_pct(m.get("overall_success_rate", 0))),
+        ("Spending plan fully funded", _fmt_pct(m.get("success_rate.all_planned_funded", 0))),
+        ("Portfolio never goes negative", _fmt_pct(m.get("success_rate.portfolio_non_negative", 0))),
+        ("Terminal wealth above threshold", _fmt_pct(m.get("success_rate.terminal_above_threshold", 0))),
+        ("Scenarios that never fail", f"{never:,} of {n:,}"),
+        ("Mean terminal net worth", _fmt_money(m.get("terminal.mean", 0))),
+    ]
+    if 50 in sc:
+        rows.append(("Median terminal net worth", _fmt_money(sc[50]["terminal_nominal"])))
+    return rows
+
+
+# Distribution columns: (frame key, human header, is-money).
+_DIST_COLS = [
+    ("terminal_nominal", "Terminal net worth", True),
     ("min_net_worth", "Minimum net worth", True),
-    ("years_funded", "Years fully funded", False),
+    ("years_funded", "Years funded", False),
+    ("total_tax", "Taxes paid", True),
+    ("total_sales", "Assets sold", True),
 ]
 
 
-def _scalar_distribution(scalars) -> list[dict]:
-    """Extract p10 / p50 / p90 of each surfaced scalar from the scalars frame."""
-    by_pct = {int(row["percentile"]): row for _, row in scalars.iterrows()}
-    out = []
-    for col, label, is_money in _SCALAR_ROWS:
-        if col not in scalars.columns:
+def _distribution_frame(loaded, view: str):
+    """Build the transposed outcome table for the chosen view (mean row on top).
+
+    ``view='percentile'`` uses the marginal per-column percentiles; ``view='terminal'``
+    uses the joint frame (each row is one real scenario ranked by terminal net worth).
+    """
+    src = loaded.joint if view == "terminal" else loaded.scalars
+    if src is None:
+        return None
+    means = loaded.metadata.get("scalar_means", {})
+    have_mean = bool(means)
+    pcts = [int(p) for p in src["percentile"]]
+    labels = (["mean"] if have_mean else []) + [f"p{p:02d}" for p in pcts]
+
+    cols: dict[str, object] = {"level": labels}
+    for key, header, is_money in _DIST_COLS:
+        if key not in src.columns:
             continue
-        out.append({
-            "label": label,
-            "is_money": is_money,
-            "p10": float(by_pct[10][col]),
-            "p50": float(by_pct[50][col]),
-            "p90": float(by_pct[90][col]),
-        })
-    return out
+        prefix = [means[key]] if have_mean else []
+        arr = np.asarray(prefix + list(src[key]), dtype=float)
+        cols[header] = np.rint(arr).astype("int64") if is_money else np.round(arr, 1)
+    return pd.DataFrame(cols)

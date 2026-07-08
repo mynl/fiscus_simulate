@@ -51,6 +51,16 @@
       {% endfor %}
     {% endwith %}
     {% block content %}{% endblock %}
+
+    {# Glossary: self-documenting notes on how a page's numbers are computed. Rendered
+       only when a page defines the block. KEEP IN SYNC with the code (see CLAUDE.md). #}
+    {% set _glossary %}{% block glossary %}{% endblock %}{% endset %}
+    {% if _glossary.strip() %}
+      <section class="glossary text-muted border-top mt-4 pt-3" style="font-size:.8rem;">
+        <div class="fw-semibold mb-1"><i class="bi bi-book me-1"></i>Glossary — how these numbers are computed</div>
+        {{ _glossary|safe }}
+      </section>
+    {% endif %}
   </main>
 
   <footer class="container-fluid main text-muted small py-4 border-top">

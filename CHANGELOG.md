@@ -3,6 +3,39 @@
 All notable changes to `fiscus_simulate`. Semantic versioning from 1.0.0; each build
 stage bumps the minor. Newest first.
 
+## 1.5.2 — 2026-07-08
+
+Friendlier run results, delete-a-run, and self-documenting glossaries.
+
+### Added
+- **Delete a run** from the dashboard, the runs list, and the run view (trash button,
+  confirm dialog) → `POST /runs/<run_id>/delete` (`storage.delete_run`).
+- **Glossary** (`base.html` `{% block glossary %}`, small font, page bottom, rendered
+  only when defined): plain-language notes on how each computed figure is derived. Added
+  to the run view (success criteria, nominal/real, tax composition, percentile-vs-joint)
+  and the config editor (wealth, portfolio income, withdrawal rates). New **CLAUDE.md
+  rule**: a number's glossary entry is updated in the same change as the calc — a stale
+  glossary is a bug.
+- **Outcome distribution** on the run view: transposed (rows = mean + p01…p99, columns =
+  human-titled metrics), rendered with **csv-grid** (`web/grid.py`; optional import with
+  a static Bootstrap-table fallback so headless/CI still works). Two views:
+  **Percentiles** (each column sorted independently) and **By terminal net worth** (the
+  new joint frame — each row is one real scenario, so it reads across coherently). The
+  joint outcomes + scalar means are computed at summarize time and persisted as
+  `joint.parquet` + `metadata.scalar_means`.
+
+### Changed
+- Run view redesigned: **human-titled headline metrics first** (overall success, plan
+  funded, portfolio solvent, terminal wealth mean/median), the outcome distribution next,
+  and **reproducibility metadata moved to a collapsed section at the bottom**.
+- `analysis/summary.py` gains `scalar_means` and `joint_by_terminal`; `storage` persists
+  and reloads them (`LoadedRun.joint`, `None` on legacy runs).
+
+### Tests
+- Joint frame + means round-trip; terminal-ranked rows monotone in terminal net worth;
+  run view shows human headline + taxes + glossary; terminal view renders; delete-a-run
+  removes it. csv-grid `to_html` verified against the table shape. 70 tests green.
+
 ## 1.5.1 — 2026-07-08
 
 Pre-Stage-7 refinements: income model cleanup, editor rename semantics, config preview,

@@ -68,6 +68,7 @@ class LoadedRun:
     percentiles: pd.DataFrame
     failures: pd.DataFrame
     scalars: pd.DataFrame
+    joint: pd.DataFrame | None = None  # terminal-NW-ranked outcomes (None on legacy runs)
 
 
 # ------------------------------------------------------------------ reproducibility
@@ -120,10 +121,18 @@ def _failures_frame(sm: SimulationSummary) -> pd.DataFrame:
 
 
 def _scalars_frame(sm: SimulationSummary) -> pd.DataFrame:
+    """Marginal per-column percentiles (each metric sorted independently)."""
     data = {"percentile": list(sm.percentiles),
             "terminal_nominal": sm.terminal_pctiles_nominal,
             "terminal_real": sm.terminal_pctiles_real}
-    data.update(sm.scalar_pctiles)
+    data.update({k: v for k, v in sm.scalar_pctiles.items() if k != "terminal_nominal"})
+    return pd.DataFrame(data)
+
+
+def _joint_frame(sm: SimulationSummary) -> pd.DataFrame:
+    """Joint outcomes at each terminal-net-worth rank (a row is one real scenario)."""
+    data = {"percentile": list(sm.percentiles)}
+    data.update(sm.joint_by_terminal)
     return pd.DataFrame(data)
 
 
@@ -175,6 +184,7 @@ def save_run(result, config: RunConfig, runs_dir: Path | None = None,
     _percentiles_frame(sm).to_parquet(d / "percentiles.parquet", index=False)
     _failures_frame(sm).to_parquet(d / "failures.parquet", index=False)
     _scalars_frame(sm).to_parquet(d / "scalars.parquet", index=False)
+    _joint_frame(sm).to_parquet(d / "joint.parquet", index=False)
     if config.simulation.persist_sample_paths > 0:
         _paths_frame(result.sample_paths).to_parquet(d / "paths.parquet", index=False)
 
@@ -193,6 +203,7 @@ def save_run(result, config: RunConfig, runs_dir: Path | None = None,
         "status": status,
         "warnings": warnings or [],
         "overall_success_rate": float(sm.overall_success_rate),
+        "scalar_means": {k: float(v) for k, v in sm.scalar_means.items()},
         "summary_checksum": summary_checksum(sm),
     }
     (d / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
@@ -206,6 +217,7 @@ def load_run(run_id: str, runs_dir: Path | None = None) -> LoadedRun:
     if not (d / "metadata.json").exists():
         raise FileNotFoundError(f"no run {run_id!r} in {d.parent}")
     metadata = json.loads((d / "metadata.json").read_text(encoding="utf-8"))
+    joint_path = d / "joint.parquet"
     return LoadedRun(
         run_id=run_id,
         metadata=metadata,
@@ -214,6 +226,7 @@ def load_run(run_id: str, runs_dir: Path | None = None) -> LoadedRun:
         percentiles=pd.read_parquet(d / "percentiles.parquet"),
         failures=pd.read_parquet(d / "failures.parquet"),
         scalars=pd.read_parquet(d / "scalars.parquet"),
+        joint=pd.read_parquet(joint_path) if joint_path.exists() else None,
     )
 
 

@@ -18,7 +18,7 @@
     <table class="table table-sm align-middle">
       <thead><tr>
         <th>Run</th><th>Created</th><th class="text-end">Scenarios</th>
-        <th class="text-end">Success</th><th class="text-end">Size</th>
+        <th class="text-end">Success</th><th class="text-end">Size</th><th></th>
       </tr></thead>
       <tbody>
         {% for r in runs %}
@@ -29,6 +29,13 @@
             <td class="text-end">{{ "{:,}".format(r.n_scenarios) }}</td>
             <td class="text-end">{{ "%.1f%%"|format(100 * r.overall_success_rate) }}</td>
             <td class="text-end text-muted">{{ "{:,}".format((r.size_bytes / 1024)|round|int) }} KB</td>
+            <td class="text-end">
+              <form method="post" action="{{ url_for('simulate.run_delete', run_id=r.run_id) }}"
+                    onsubmit="return confirm('Delete run {{ r.run_id }}?');">
+                <button class="btn btn-sm btn-link text-danger p-0" type="submit" title="Delete run">
+                  <i class="bi bi-trash"></i></button>
+              </form>
+            </td>
           </tr>
         {% endfor %}
       </tbody>

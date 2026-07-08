@@ -2,84 +2,99 @@
 {% block title %}{{ run.run_id }} &middot; Run &middot; fiscus_simulate{% endblock %}
 
 {% block help %}
-  <p class="text-muted small mb-2"><strong>Run view (Stage 6).</strong> Reproducibility
-  metadata and the summary metrics for one persisted run — enough to confirm it
-  completed and is stored.</p>
-  <p class="text-muted small mb-0">The net-worth funnel, terminal-wealth distribution and
-  failure-timing charts land in Stage 7.</p>
+  <p class="text-muted small mb-2"><strong>Run view.</strong> Headline outcomes first,
+  then the full outcome distribution (percentiles or scenarios ranked by terminal net
+  worth), then reproducibility metadata.</p>
+  <p class="text-muted small mb-0">The net-worth funnel and charts arrive in Stage 7.</p>
 {% endblock %}
 
 {% block content %}
 <div class="d-flex align-items-center mb-3">
-  <h1 class="h3 mb-0">Run <span class="text-secondary">{{ run.run_id }}</span></h1>
+  <h1 class="h3 mb-0">Run <span class="text-secondary fs-6">{{ run.run_id }}</span></h1>
   <a class="btn btn-outline-secondary btn-sm ms-auto" href="{{ url_for('simulate.runs_list') }}">
     <i class="bi bi-arrow-left"></i> Runs</a>
+  <form method="post" action="{{ url_for('simulate.run_delete', run_id=run.run_id) }}"
+        class="ms-2" onsubmit="return confirm('Delete run {{ run.run_id }}? This cannot be undone.');">
+    <button class="btn btn-outline-danger btn-sm" type="submit" title="Delete this run">
+      <i class="bi bi-trash"></i></button>
+  </form>
 </div>
 
-<div class="row g-4">
-  <div class="col-lg-5">
-    <h2 class="h5">Reproducibility</h2>
-    <table class="table table-sm">
-      <tbody>
-        {% for key in ['created', 'seed', 'generator', 'n_scenarios', 'horizon_years',
-                       'runtime_s', 'status', 'package_version', 'python_version',
-                       'git_commit', 'summary_checksum'] %}
-          {% if key in metadata %}
-            <tr><th class="text-nowrap pe-3">{{ key }}</th>
-              <td class="font-monospace small">{{ metadata[key] }}</td></tr>
-          {% endif %}
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-  <div class="col-lg-7">
-    <h2 class="h5">Summary metrics</h2>
-    <table class="table table-sm">
-      <thead><tr><th>Metric</th><th class="text-end">Value</th></tr></thead>
-      <tbody>
-        {% for metric, value in metrics %}
-          <tr><td class="font-monospace small">{{ metric }}</td>
-            <td class="text-end">
-              {% if 'rate' in metric %}{{ "%.1f%%"|format(100 * value) }}
-              {% elif value == value|round %}{{ "{:,.0f}".format(value) }}
-              {% else %}{{ "{:,.2f}".format(value) }}{% endif %}
-            </td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+{# --- Headline summary (human-titled, lead) --- #}
+<h2 class="h5">Summary</h2>
+<div class="row g-3 mb-4">
+  {% for label, value in headline %}
+    <div class="col-6 col-md-4 col-xl-3">
+      <div class="border rounded p-2 h-100">
+        <div class="text-muted" style="font-size:.8rem;">{{ label }}</div>
+        <div class="fs-5 fw-semibold">{{ value }}</div>
+      </div>
+    </div>
+  {% endfor %}
 </div>
 
-{% if scalars %}
-  <h2 class="h5 mt-2">Outcome distribution <span class="text-muted small fw-normal">(per household, across scenarios)</span></h2>
-  <div class="table-responsive">
-    <table class="table table-sm align-middle">
-      <thead><tr>
-        <th></th><th class="text-end">p10 (unlucky)</th><th class="text-end">p50 (median)</th>
-        <th class="text-end">p90 (lucky)</th>
-      </tr></thead>
-      <tbody>
-        {% for s in scalars %}
-          <tr>
-            <td>{{ s.label }}</td>
-            {% for v in [s.p10, s.p50, s.p90] %}
-              <td class="text-end">
-                {% if s.is_money %}{{ "{:,.0f}".format(v) }}{% else %}{{ "%.1f"|format(v) }}{% endif %}</td>
-            {% endfor %}
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+{# --- Outcome distribution (transposed; csv-grid; two views) --- #}
+<div class="d-flex align-items-center mb-2">
+  <h2 class="h5 mb-0">Outcome distribution
+    <span class="text-muted small fw-normal">per household, across scenarios</span></h2>
+  <div class="btn-group btn-group-sm ms-auto" role="group" aria-label="distribution view">
+    <a class="btn btn-outline-secondary {{ 'active' if view == 'percentile' }}"
+       href="?view=percentile">Percentiles (per column)</a>
+    <a class="btn btn-outline-secondary {{ 'active' if view == 'terminal' }} {{ 'disabled' if not has_joint }}"
+       href="?view=terminal">By terminal net worth</a>
   </div>
-  <p class="text-muted small">Lifetime taxes are the summed nominal tax across all 160
-  quarters — interest &amp; dividends on the taxable account, taxable pension income,
-  tax-deferred withdrawals, and realized capital gains.</p>
+</div>
+<p class="text-muted small mb-2">
+  {% if view == 'terminal' %}Each row is one real scenario, ranked by terminal net worth —
+  the figures read across as a single household's outcome.
+  {% else %}Each column is sorted independently — a row's figures come from different
+  scenarios. Use "By terminal net worth" to read a single scenario across.{% endif %}
+</p>
+{% if dist_table %}{{ dist_table }}{% else %}
+  <div class="alert alert-light border">No distribution table for this run.</div>
 {% endif %}
+
+{# --- Reproducibility (moved below; not human-interesting) --- #}
+<details class="mt-4">
+  <summary class="h6 text-muted">Reproducibility metadata</summary>
+  <table class="table table-sm mt-2" style="max-width:640px;">
+    <tbody>
+      {% for key in ['created', 'seed', 'generator', 'n_scenarios', 'horizon_years',
+                     'runtime_s', 'status', 'package_version', 'python_version',
+                     'git_commit', 'summary_checksum'] %}
+        {% if key in metadata %}
+          <tr><th class="text-nowrap pe-3 fw-normal text-muted">{{ key }}</th>
+            <td class="font-monospace small">{{ metadata[key] }}</td></tr>
+        {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+</details>
 
 <div class="alert alert-warning model-note mt-3" role="alert">
   <strong>Model limitations (V1).</strong> Flat-rate taxes; no mortality/morbidity; fixed
   spending mix; proportional withdrawals; no rebalancing; stylized return generator.
   A run is a set of possible futures, not a single probability of success.
 </div>
+{% endblock %}
+
+{% block glossary %}
+<p class="mb-1"><strong>Success criteria</strong> (all coincide in V1, diverge in V2):
+<em>Overall success</em> = every criterion holds on a path. <em>Plan fully funded</em> =
+planned spending is met every quarter (no shortfall). <em>Portfolio never negative</em> =
+net worth ≥ 0 every quarter. <em>Terminal above threshold</em> = ending net worth exceeds
+the configured floor. Each rate is the fraction of scenarios satisfying it.</p>
+<p class="mb-1"><strong>Terminal / minimum net worth</strong> are nominal (of-the-day)
+sums across all accounts at the final quarter / at the worst quarter. Divide by the
+inflation deflator for real (today's-money) terms.</p>
+<p class="mb-1"><strong>Taxes paid</strong> = summed nominal tax over all 160 quarters:
+interest &amp; dividends on the taxable account, the taxable part of pension income,
+tax-deferred withdrawals (taxed on withdrawal), and realized capital gains (via cost
+basis). <strong>Assets sold</strong> = gross proceeds raised by selling to fund spending.</p>
+<p class="mb-0"><strong>Percentiles vs. terminal-ranked.</strong> In the
+<em>Percentiles</em> view each column is sorted on its own, so the p50 of taxes and the
+p50 of terminal wealth are different households. In <em>By terminal net worth</em> the
+scenarios are ranked by terminal net worth and each row is that one household's actual
+figures — so the row reads across coherently. The <em>mean</em> row is identical in both
+(averages don't depend on ordering).</p>
 {% endblock %}

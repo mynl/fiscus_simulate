@@ -107,9 +107,25 @@ def test_run_launch_persists_and_views(client, tmp_path):
     runs = storage.list_runs(runs_dir=tmp_path / "simulation_runs")
     assert [r.run_id for r in runs] == [run_id]
     detail = client.get(f"/runs/{run_id}").get_data(as_text=True)
-    assert "overall_success_rate" in detail
-    assert "Taxes paid (lifetime)" in detail  # tax outcomes surfaced
+    assert "Overall success (every criterion met)" in detail  # human headline titles
+    assert "Taxes paid" in detail  # tax outcomes surfaced in the distribution
+    assert "Glossary" in detail    # self-documenting notes present
+    # Terminal-net-worth-ranked view is available and renders.
+    terminal = client.get(f"/runs/{run_id}?view=terminal").get_data(as_text=True)
+    assert "Each row is one real scenario" in terminal
     assert client.get("/runs").status_code == 200
+
+
+def test_delete_run(client, tmp_path):
+    client.post("/config", data={"name": "todelete", "yaml": _small_config_yaml()})
+    run_id = client.post("/config/todelete/run").headers["Location"].rstrip("/").split("/")[-1]
+    # job_id URL -> resolve to the run via status
+    status = client.get(f"/jobs/{run_id}/status").get_json()
+    real_run_id = status["run_id"]
+    assert storage.list_runs(runs_dir=tmp_path / "simulation_runs")
+    resp = client.post(f"/runs/{real_run_id}/delete")
+    assert resp.status_code == 302
+    assert storage.list_runs(runs_dir=tmp_path / "simulation_runs") == []
 
 
 def test_job_view_redirects_to_completed_run(client):

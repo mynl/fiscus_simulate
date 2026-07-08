@@ -176,6 +176,13 @@ sibling `pyproject.toml` for the `csv-grid` local `[tool.uv.sources]` path.
   definitive forecast.
 - **UI rule:** no buttons that change meaning with state (no play/pause) — use
   separate, explicitly-labeled actions.
+- **Glossary rule (self-documenting pages).** Every web page that shows *computed*
+  numbers carries a bottom-of-page **Glossary** (small font, via the `{% block glossary %}`
+  in `base.html`) explaining exactly how each figure is derived — the formula, the
+  convention, the V1/V2 caveat. **This is load-bearing: when you change how a number is
+  computed, update its glossary entry in the same change.** Treat a stale glossary as a
+  bug. New computed pages get a glossary; review existing ones whenever their inputs
+  change.
 
 ## Planning workflow
 
