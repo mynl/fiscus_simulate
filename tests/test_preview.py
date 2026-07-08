@@ -29,6 +29,26 @@ def test_default_preview_figures():
     assert math.isclose(p.net_withdrawal_rate, 0.0256, rel_tol=1e-9)
 
 
+def test_retirement_projection_zero_return():
+    cfg = RunConfig.default()
+    for a in cfg.return_generator.real_return:
+        cfg.return_generator.real_return[a] = 0.0  # r=0 -> closed form is exact & simple
+    p = config_preview(cfg)
+
+    # Household retires with the later person: B is 58, retires 67 -> 9 years.
+    assert p.years_to_retirement == 9
+    assert p.annual_real_savings_total == 55_000  # 30k + 25k
+
+    # r=0: assets = wealth + Σ (savings_i × years_i). A saves 7y, B saves 9y.
+    expected = 1_250_000 + 30_000 * 7 + 25_000 * 9
+    assert math.isclose(p.est_real_assets_at_retirement, expected, rel_tol=1e-9)
+
+    # Retirement income = real pensions (20k) + assets × portfolio yield (28k/1.25M).
+    y = 28_000 / 1_250_000
+    assert math.isclose(p.est_real_retirement_income, 20_000 + expected * y, rel_tol=1e-9)
+    assert math.isclose(p.retirement_withdrawal_rate, 60_000 / expected, rel_tol=1e-9)
+
+
 def test_active_pension_counts_as_income_now():
     cfg = RunConfig.default()
     cfg.household.people[0].income_streams[0].start_age = 50  # already started at 60

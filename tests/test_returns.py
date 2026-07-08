@@ -75,7 +75,8 @@ def test_engine_reconciles_on_stochastic_run():
     w_begin = np.empty((S, T))
     w_begin[:, 0] = cfg.balances.total()
     w_begin[:, 1:] = res.net_worth[:, :-1]
-    rhs = (w_begin + res.external_income[None, :] + res.investment_income
-           + res.capital_return - res.spending_funded - res.tax_total)
+    rhs = (w_begin + res.external_income[None, :] + res.savings[None, :]
+           + res.investment_income + res.capital_return
+           - res.spending_funded - res.tax_total)
     assert np.allclose(res.net_worth, rhs, atol=1e-6)
     assert res.net_worth.shape[0] == 40

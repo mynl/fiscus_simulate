@@ -17,12 +17,13 @@ ignored by the V1 engine. The shape is fixed now so nothing re-architects later.
 """
 from __future__ import annotations
 
+import math
 from datetime import date
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 
 # Numerical tolerance for the spending category-percentage sum check.
 PCT_SUM_TOL = 1e-6
@@ -107,7 +108,7 @@ class IncomeStream(_Model):
 
 
 class Person(_Model):
-    """One household member and their external income streams.
+    """One household member: current age, retirement, savings, and income streams.
 
     Parameters
     ----------
@@ -115,13 +116,32 @@ class Person(_Model):
         The person's name (or a short label like ``"A"``). Used for display.
     current_age : float
         Age in years at the simulation start date.
+    retirement_age : float or None
+        Age at which the person stops working and saving. ``None`` means "already
+        retired" — no accumulation phase (spending can begin at period 0).
+    annual_real_savings : float
+        Real (today's-money) amount saved into the pooled portfolio each year while
+        ``current_age <= age < retirement_age``. Ignored once retired.
     income_streams : list of IncomeStream
         Pensions / Social-Security-style income belonging to this person (may be empty).
+
+    Notes
+    -----
+    Pre-retirement, the household is assumed to cover living costs from salary, so only
+    the *net* saving is modeled (see ``savings.py`` / the engine order of operations).
     """
 
     name: str
     current_age: float = Field(gt=0, lt=120)
+    retirement_age: float | None = Field(default=None, ge=0, le=120)
+    annual_real_savings: float = Field(default=0.0, ge=0)
     income_streams: list[IncomeStream] = Field(default_factory=list)
+
+    def retirement_period(self) -> int:
+        """Period index at which this person retires (0 if already retired / unset)."""
+        if self.retirement_age is None or self.retirement_age <= self.current_age:
+            return 0
+        return math.ceil((self.retirement_age - self.current_age) * 4)
 
 
 class Household(_Model):
@@ -143,6 +163,20 @@ class Household(_Model):
     def n_periods(self) -> int:
         """Number of quarterly periods over the horizon."""
         return self.horizon_years * 4
+
+    @property
+    def spending_start_period(self) -> int:
+        """Period at which household spending (drawdown) begins.
+
+        Notes
+        -----
+        The household is "fully retired" — and so begins its retirement spending — when
+        the **last** person retires. Before that, a still-working spouse's salary is
+        assumed to cover living costs, so only net saving is modeled and no drawdown
+        occurs. Clamped to the horizon.
+        """
+        latest = max((p.retirement_period() for p in self.people), default=0)
+        return min(latest, self.n_periods)
 
 
 # ------------------------------------------------------------------------ spending
@@ -390,10 +424,12 @@ class RunConfig(_Model):
         return cls(
             household=Household(
                 people=[
-                    Person(name="A", current_age=60, income_streams=[
-                        IncomeStream(label="pension", annual_real=11_000, start_age=67)]),
-                    Person(name="B", current_age=58, income_streams=[
-                        IncomeStream(label="pension", annual_real=9_000, start_age=67)]),
+                    Person(name="A", current_age=60, retirement_age=67,
+                           annual_real_savings=30_000, income_streams=[
+                               IncomeStream(label="pension", annual_real=11_000, start_age=67)]),
+                    Person(name="B", current_age=58, retirement_age=67,
+                           annual_real_savings=25_000, income_streams=[
+                               IncomeStream(label="pension", annual_real=9_000, start_age=67)]),
                 ],
                 start_date=date(2026, 3, 31),
                 horizon_years=40,

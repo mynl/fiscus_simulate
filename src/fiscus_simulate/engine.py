@@ -9,7 +9,7 @@ Order of operations and the reconciliation identity are documented in
 ``dev/plan-1.1-stage2-engine.md`` (income-first model). The identity, checked by tests:
 
     W_end = W_begin + external_income + investment_income + capital_return
-            - spending - tax
+            + savings - spending - tax
 """
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from .income import build_external_income
 from .models import ACCOUNT_TYPES, ASSET_CLASSES, RunConfig
 from .returns.base import ReturnsBundle
 from .returns.deterministic import build_deterministic_returns
+from .savings import build_savings_path
 from .spending import build_spending_path
 from .tax import income_tax
 
@@ -38,9 +39,10 @@ class EngineResult:
 
     config: RunConfig
     net_worth: np.ndarray          # (S, T) end-of-period net worth
-    spending: np.ndarray           # (T,) planned nominal spending
+    spending: np.ndarray           # (T,) active planned nominal spending (0 pre-retirement)
     spending_funded: np.ndarray    # (S, T) actually-funded spending (< planned on failure)
     external_income: np.ndarray    # (T,)
+    savings: np.ndarray            # (T,) nominal pre-retirement savings contributions
     investment_income: np.ndarray  # (S, T)
     capital_return: np.ndarray     # (S, T)
     tax_income: np.ndarray         # (S, T)
@@ -123,6 +125,10 @@ def simulate(config: RunConfig, returns: ReturnsBundle | None = None,
 
     spend = build_spending_path(config)
     inc = build_external_income(config, returns.overall_inflation_q)
+    savings = build_savings_path(config, returns.overall_inflation_q)
+    p_spend_start = config.household.spending_start_period
+    # Active planned spending: zero during the pre-retirement accumulation phase.
+    plan = np.where(np.arange(T) >= p_spend_start, spend.total, 0.0)
 
     # Output buffers
     net_worth = np.zeros((S, T))
@@ -153,10 +159,22 @@ def simulate(config: RunConfig, returns: ReturnsBundle | None = None,
         # 5. Income tax (accrual).
         tax_inc = income_tax(interest_taxable, dividend_taxable, inc.taxable[t], config.tax_rates)
 
+        # 5b. Pre-retirement savings: invest the contribution in the taxable account at the
+        # current portfolio allocation (bought at market, so basis steps up by the amount).
+        sv = savings[t]
+        if sv > 0.0:
+            asset_tot = B.sum(axis=1)                        # (S, n_asset) across accounts
+            port = asset_tot.sum(axis=1, keepdims=True)      # (S, 1)
+            weights = np.divide(asset_tot, port, out=np.zeros_like(asset_tot), where=port > 0)
+            contrib = sv * weights                           # (S, n_asset)
+            contrib[(port[:, 0] == 0.0), CASH] += sv         # nothing invested yet -> cash
+            B[:, TAXABLE, :] += contrib
+            basis += contrib
+
         # 6. Fund from the spendable pool (external + taxable cash) first.
         taxable_cash = B[:, TAXABLE, CASH]
         pool = inc.total[t] + taxable_cash
-        need = spend.total[t] + tax_inc
+        need = plan[t] + tax_inc
         B[:, TAXABLE, CASH] = np.maximum(pool - need, 0.0)   # surplus accumulates as cash
         delta = np.maximum(need - pool, 0.0)                 # shortfall to raise by selling
 
@@ -168,7 +186,7 @@ def simulate(config: RunConfig, returns: ReturnsBundle | None = None,
         # resources cover (the shortfall is the failure). Keeps the reconciliation exact.
         net_sale = sale.gross - sale.tax
         spending_funded = np.where(
-            sale.funded, spend.total[t], np.maximum(pool + net_sale - tax_inc, 0.0)
+            sale.funded, plan[t], np.maximum(pool + net_sale - tax_inc, 0.0)
         )
 
         # 9. Apply capital returns to end-of-period balances.
@@ -189,9 +207,10 @@ def simulate(config: RunConfig, returns: ReturnsBundle | None = None,
     return EngineResult(
         config=config,
         net_worth=net_worth,
-        spending=spend.total,
+        spending=plan,
         spending_funded=spending_funded_a,
         external_income=inc.total,
+        savings=savings,
         investment_income=inv_income_a,
         capital_return=cap_return_a,
         tax_income=tax_income_a,

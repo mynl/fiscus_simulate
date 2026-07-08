@@ -3,6 +3,39 @@
 All notable changes to `fiscus_simulate`. Semantic versioning from 1.0.0; each build
 stage bumps the minor. Newest first.
 
+## 1.5.4 — 2026-07-08
+
+Pre-retirement accumulation: model the working years between now and retirement.
+
+### Added (breaking config schema → `schema_version` 1.2)
+- **`Person.retirement_age`** (`float | None`; `None` = already retired) and
+  **`Person.annual_real_savings`** (real $/yr saved into the pooled portfolio while
+  working). `default()` retires both at 67 saving 30k/25k.
+- **`savings.py`** — `build_savings_path`: per-quarter nominal contributions (real saving
+  inflated to nominal, summed over still-working people).
+- **Engine accumulation phase.** Spending is **deferred** until the household is fully
+  retired (`Household.spending_start_period` = the latest person's retirement); before
+  then only net saving is modeled. Contributions are **invested in the taxable account at
+  the current portfolio allocation**, with cost basis stepped up (post-tax, no double-tax,
+  stays invested). The reconciliation identity gains a `+ savings` term (checked every
+  period, deterministic and stochastic).
+- **Retirement projection** in the config preview (all real, closed form, no PV):
+  years to retirement, total real savings/yr, **estimated real assets at retirement**
+  (`W₀(1+r)ᴺ + Σ savings annuity`, `r` = allocation-weighted real return), estimated real
+  retirement income (pensions + portfolio yield), the at-retirement withdrawal rate and
+  income coverage. Cross-checks against the sim: the closed-form estimate matches the
+  Monte-Carlo median real net worth at retirement. Glossary updated (the rule).
+
+### Changed
+- `EngineResult` gains `savings` (T,); `spending` now reflects the *active* schedule
+  (0 pre-retirement). The default plan's success rate rises markedly — it now accumulates
+  for the working years instead of drawing down from the current age.
+
+### Tests
+- Pre-retirement accumulation (contributions grow the pool, no spending, reconciles);
+  savings term in both reconciliation checks; retirement projection figures (exact at
+  r=0). 74 tests green.
+
 ## 1.5.3 — 2026-07-08
 
 ### Changed

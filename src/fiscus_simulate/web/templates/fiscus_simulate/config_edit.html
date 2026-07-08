@@ -55,6 +55,30 @@
             &middot; {{ "%.1f%%"|format(100 * p.net_withdrawal_rate) }} net now</div>
         </div>
       </div>
+
+      {% if p.years_to_retirement > 0 %}
+      <hr class="my-3">
+      <div class="small text-muted mb-2"><i class="bi bi-hourglass-split me-1"></i><strong>At
+        retirement</strong> — {{ "%.0f"|format(p.years_to_retirement) }} yr away, saving
+        {{ "{:,.0f}".format(p.annual_real_savings_total) }}/yr real (all figures real / today's money)</div>
+      <div class="row g-3 text-center small">
+        <div class="col-6 col-md-4">
+          <div class="text-muted">Est. assets at retirement</div>
+          <div class="fs-5 fw-semibold">{{ "{:,.0f}".format(p.est_real_assets_at_retirement) }}</div>
+        </div>
+        <div class="col-6 col-md-4">
+          <div class="text-muted">Est. retirement income / yr</div>
+          <div class="fs-5 fw-semibold">{{ "{:,.0f}".format(p.est_real_retirement_income) }}</div>
+          <div class="text-muted" style="font-size:.75rem;">pensions + portfolio yield</div>
+        </div>
+        <div class="col-6 col-md-4">
+          <div class="text-muted">Spending vs. retirement assets</div>
+          <div class="fs-5 fw-semibold">{{ "%.1f%%"|format(100 * p.retirement_withdrawal_rate) }}</div>
+          <div class="text-muted" style="font-size:.75rem;">income covers
+            {{ "%.0f%%"|format(100 * p.retirement_income_coverage) }} of spend</div>
+        </div>
+      </div>
+      {% endif %}
     </div>
   </div>
 {% endif %}
@@ -111,10 +135,19 @@ taxable bond/cash income (tax-deferred and tax-free income is untaxed on accrual
 at their real amounts; <em>active now</em> counts only streams whose owner has already
 reached <code>start_age</code>; <em>starts in N yr</em> is the wait to the earliest
 not-yet-started stream.</p>
-<p class="mb-0"><strong>Withdrawal rate.</strong> <em>Gross</em> = planned spending ÷
+<p class="mb-1"><strong>Withdrawal rate.</strong> <em>Gross</em> = planned spending ÷
 household wealth (the classic anchor). <em>Net now</em> = (planned spending − income
 available today) ÷ wealth, where income today is pensions active now plus gross portfolio
 income — the real early drawdown before later pensions start. Approximate: it uses gross
 portfolio income and ignores that tax-deferred income isn't freely spendable until sold.</p>
+<p class="mb-0"><strong>At retirement</strong> (all real, no inflation/PV). Household
+retires in <em>N</em> = the latest person's <code>retirement_age − current_age</code>;
+until then each person saves <code>annual_real_savings</code>/yr into the pool.
+<em>Est. assets</em> = W₀(1+r)<sup>N</sup> + Σ each person's savings grown as an annuity
+at the portfolio real return <em>r</em> = Σ (asset weight × real return); contributions
+compound over that person's own working years then sit to retirement. <em>Retirement
+income</em> = total real pensions + est. assets × portfolio income yield. <em>Spending vs.
+retirement assets</em> = planned spending ÷ est. assets (the at-retirement withdrawal
+rate); <em>coverage</em> = retirement income ÷ spending.</p>
 {% endif %}
 {% endblock %}

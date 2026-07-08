@@ -1,8 +1,10 @@
-schema_version: '1.1'
+schema_version: '1.2'
 household:
   people:
   - name: A
     current_age: 60.0
+    retirement_age: 67.0
+    annual_real_savings: 30000.0
     income_streams:
     - label: pension
       annual_real: 11000.0
@@ -12,6 +14,8 @@ household:
       taxable_fraction: 1.0
   - name: B
     current_age: 58.0
+    retirement_age: 67.0
+    annual_real_savings: 25000.0
     income_streams:
     - label: pension
       annual_real: 9000.0

@@ -36,6 +36,8 @@ def _flat_cfg(horizon_years=1):
     cfg.tax_rates.other_pension = 0.0
     for person in cfg.household.people:
         person.income_streams = []
+        person.retirement_age = None       # already retired: spend from t0, no savings
+        person.annual_real_savings = 0.0
     cfg.spending.total_annual_real = 40_000  # 10,000 / quarter
     cfg.balances.balances = {
         AccountType.taxable: {AssetClass.stocks: 0.0, AssetClass.bonds: 0.0, AssetClass.cash: 100_000.0},
@@ -54,6 +56,7 @@ def _reconciles(res, initial_wealth):
     rhs = (
         w_begin
         + res.external_income[None, :]
+        + res.savings[None, :]
         + res.investment_income
         + res.capital_return
         - res.spending_funded
@@ -84,6 +87,21 @@ def test_surplus_income_accumulates_as_cash():
                      taxable_fraction=0.0)]
     res = simulate(cfg)  # income 20k/q, spend 10k/q -> +10k/q
     np.testing.assert_allclose(res.net_worth[0], [110_000, 120_000, 130_000, 140_000])
+    assert _reconciles(res, 100_000)
+    assert res.funded.all()
+
+
+def test_pre_retirement_savings_accumulate_no_spending():
+    """Before retirement: contributions grow the pool and no spending is drawn."""
+    cfg = _flat_cfg(horizon_years=1)               # zero returns/inflation/yield/tax
+    cfg.household.people[0].current_age = 60
+    cfg.household.people[0].retirement_age = 61    # retires at period 4 (past this horizon)
+    cfg.household.people[0].annual_real_savings = 40_000  # 10,000 / quarter
+    res = simulate(cfg)
+    # No spending drawn during accumulation; +10k/q contributions on 100k cash.
+    np.testing.assert_allclose(res.net_worth[0], [110_000, 120_000, 130_000, 140_000])
+    np.testing.assert_allclose(res.spending, [0, 0, 0, 0])       # spending deferred
+    np.testing.assert_allclose(res.savings, [10_000, 10_000, 10_000, 10_000])
     assert _reconciles(res, 100_000)
     assert res.funded.all()
 
