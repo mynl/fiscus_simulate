@@ -3,6 +3,16 @@
 All notable changes to `fiscus_simulate`. Semantic versioning from 1.0.0; each build
 stage bumps the minor. Newest first.
 
+## 1.6.1 — 2026-07-10
+
+### Fixed
+- **Charts rendered as empty placeholders.** The `fiscusChart` helper was defined at the
+  bottom of `base.html`, *after* the inline chart calls in the page body — so each call
+  hit an undefined function (`ReferenceError`) and drew nothing. Moved the definition into
+  `<head>` (right after the uPlot load) and deferred the actual build to `DOMContentLoaded`
+  so the container also has a real width to size against. Added a regression test asserting
+  the helper is defined before the first chart call.
+
 ## 1.6.0 — 2026-07-08
 
 Stage 7: results dashboard & charts.

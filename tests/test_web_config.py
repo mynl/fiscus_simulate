@@ -129,6 +129,9 @@ def test_run_launch_persists_and_views(client, tmp_path):
     # Charts render (uPlot blocks present).
     assert "Net-worth funnel" in detail
     assert "fiscusChart" in detail and "chart-funnel" in detail and "chart-terminal" in detail
+    # The helper must be DEFINED before the inline chart calls run, else ReferenceError
+    # leaves empty placeholders (regression guard).
+    assert detail.index("window.fiscusChart =") < detail.index('fiscusChart("chart-funnel"')
     # Real scale toggle renders.
     assert client.get(f"/runs/{run_id}?scale=real").status_code == 200
     # Terminal-net-worth-ranked view is available and renders.
