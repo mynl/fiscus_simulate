@@ -140,6 +140,42 @@ def test_run_launch_persists_and_views(client, tmp_path):
     assert client.get("/runs").status_code == 200
 
 
+def _launch_run(client, name: str) -> str:
+    """Save a small config, run it inline, and return its persisted run id."""
+    client.post("/config", data={"name": name, "yaml": _small_config_yaml()})
+    job_url = client.post(f"/config/{name}/run").headers["Location"]
+    return client.get(job_url + "/status").get_json()["run_id"]
+
+
+def test_runs_list_has_summary_and_details_buttons(client):
+    run_id = _launch_run(client, "listme")
+    page = client.get("/runs").get_data(as_text=True)
+    assert "Summary" in page and "Details" in page
+    assert f"/runs/{run_id}/details" in page
+
+
+def test_details_scenario_walk_overlay_and_tabs(client):
+    run_id = _launch_run(client, "inside")
+    # Pick the median percentile and inspect the scenario sitting there.
+    page = client.get(f"/runs/{run_id}/details?p=50").get_data(as_text=True)
+    assert "Details" in page and "chart-funnel" in page
+    # Grab a real scenario index from the picker options.
+    import re
+    idx = int(re.search(r'<option value="(\d+)"', page).group(1))
+    detail = client.get(f"/runs/{run_id}/details?p=50&scenario={idx}").get_data(as_text=True)
+    # Overlay series present on the funnel, the walk grid, all three tabs, and the glossary.
+    assert '"scenario"' in detail and "chart-funnel" in detail
+    assert "Consolidated" in detail and "By account" in detail and "Order of returns" in detail
+    assert "Not yet implemented" in detail            # By account placeholder
+    assert "chart-order" in detail                    # order histogram rendered
+    assert "Glossary" in detail
+    assert detail.index("window.fiscusChart =") < detail.index('fiscusChart("chart-funnel"')
+
+
+def test_details_missing_run_404(client):
+    assert client.get("/runs/nope/details").status_code == 404
+
+
 def test_compare_two_runs(client):
     client.post("/config", data={"name": "cmpa", "yaml": _small_config_yaml()})
     client.post("/config", data={"name": "cmpb", "yaml": _small_config_yaml()})

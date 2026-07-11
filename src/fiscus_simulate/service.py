@@ -13,9 +13,10 @@ from time import perf_counter
 import numpy as np
 
 from .analysis.summary import SimulationSummary, summarize
+from .assets import BONDS, CASH, STOCKS
 from .engine import simulate
 from .models import RunConfig
-from .returns.base import ReturnGenerator
+from .returns.base import ReturnGenerator, ReturnsBundle
 from .returns.deterministic import DeterministicReturns
 from .returns.gbm import GBMReturns
 
@@ -36,6 +37,30 @@ class SimulationResult:
     summary: SimulationSummary
     sample_paths: dict          # {'net_worth': (k, T), 'success': (k,) bool, 'index': (k,)}
     meta: dict
+    outcomes: dict              # per-scenario (S,) vectors: terminal/failure/min/tax
+
+
+@dataclass
+class ScenarioWalk:
+    """One reproduced scenario's quarter-by-quarter walk (from a single-scenario replay)."""
+
+    index: int
+    net_worth: np.ndarray                  # (T,) end-of-period net worth, for the overlay
+    terminal_net_worth: float
+    first_failure_period: int              # -1 if never failed
+    columns: dict[str, np.ndarray]         # per-period (T,) walk arrays, keyed by column
+    bundle: ReturnsBundle                  # the 1-scenario returns, reused by the Order tab
+
+
+@dataclass
+class OrderResult:
+    """Order-of-returns experiment: terminal wealth under many quarter-permutations."""
+
+    terminal: np.ndarray                   # (n,) terminal net worth per reordering
+    first_failure_period: np.ndarray       # (n,) -1 where never failed
+    reference_terminal: float              # the actual scenario's terminal (unpermuted)
+    n: int
+    seed: int | None
 
 
 def make_generator(config: RunConfig) -> ReturnGenerator:
@@ -105,6 +130,12 @@ def run_simulation(config: RunConfig, generator: ReturnGenerator | None = None,
     summary = summarize(net_worth, min_nw, terminal, years, first_fail,
                         total_tax, total_sales, success, pi_q)
     sample = _representative(net_worth, success)
+    outcomes = {
+        "terminal_net_worth": terminal,
+        "first_failure_period": first_fail,
+        "min_net_worth": min_nw,
+        "total_tax": total_tax,
+    }
     meta = {
         "n_scenarios": S,
         "seed": config.simulation.seed,
@@ -112,7 +143,8 @@ def run_simulation(config: RunConfig, generator: ReturnGenerator | None = None,
         "chunk_size": chunk,
         "runtime_s": runtime,
     }
-    result = SimulationResult(summary=summary, sample_paths=sample, meta=meta)
+    result = SimulationResult(summary=summary, sample_paths=sample, meta=meta,
+                             outcomes=outcomes)
 
     if persist:
         from .storage import save_run  # lazy: keeps non-persisted runs pandas-free
@@ -144,3 +176,153 @@ def _representative(net_worth: np.ndarray, success: dict[str, np.ndarray],
         "success": overall[chosen],
         "index": chosen,
     }
+
+
+# --------------------------------------------------------- "see inside" a scenario
+# Reproduced-outcomes cache for legacy runs that predate outcomes.parquet, keyed by run id.
+_OUTCOMES_CACHE: dict[str, dict[str, np.ndarray]] = {}
+_OUTCOME_KEYS = ("terminal_net_worth", "first_failure_period", "min_net_worth", "total_tax")
+
+
+def scenario_outcomes(loaded) -> dict[str, np.ndarray]:
+    """Per-scenario outcome vectors for a loaded run (for percentile→scenario lookup).
+
+    Returns a dict of ``(S,)`` arrays keyed by :data:`_OUTCOME_KEYS`. New runs read the
+    persisted ``outcomes.parquet``; legacy runs without it are reproduced once from the
+    stored seed + config and cached in-memory (identical by construction — same code,
+    config and seed).
+
+    Parameters
+    ----------
+    loaded : storage.LoadedRun
+        The run to read outcomes for.
+    """
+    if loaded.outcomes is not None:
+        return {k: loaded.outcomes[k].to_numpy() for k in _OUTCOME_KEYS}
+    cached = _OUTCOMES_CACHE.get(loaded.run_id)
+    if cached is None:
+        cached = run_simulation(loaded.config).outcomes
+        _OUTCOMES_CACHE[loaded.run_id] = cached
+    return cached
+
+
+def _slice_bundle(bundle: ReturnsBundle, row: int) -> ReturnsBundle:
+    """A single-scenario ``ReturnsBundle`` from row ``row`` (broadcast rows tolerated)."""
+    r = 0 if bundle.capital_return.shape[0] == 1 else row
+    return ReturnsBundle(
+        capital_return=np.array(bundle.capital_return[r:r + 1]),
+        income_yield=np.array(bundle.income_yield[r:r + 1]),
+        nominal_total=np.array(bundle.nominal_total[r:r + 1]),
+        overall_inflation_q=bundle.overall_inflation_q,
+    )
+
+
+def replay_scenario(config: RunConfig, index: int,
+                    generator: ReturnGenerator | None = None) -> ScenarioWalk:
+    """Reproduce one scenario exactly and capture its quarter-by-quarter walk.
+
+    Parameters
+    ----------
+    config : RunConfig
+        The run configuration (single source of truth; seed lives here).
+    index : int
+        The scenario's position in the ``0..S-1`` cube (as ranked/listed by the caller).
+    generator : ReturnGenerator, optional
+        Override the generator (defaults to :func:`make_generator`).
+
+    Notes
+    -----
+    The RNG is one sequential draw (not ``seed+i``), so regenerating scenario ``index``
+    means streaming return chunks up to the one containing it and slicing that single row
+    — exact, at a cost that scales with ``index``. The engine then runs for that lone
+    scenario with ``capture_balances=True``; the reconciliation identity holds every
+    quarter: ``End = Begin + ext_income + invest_income + savings + capital − spend − tax``.
+    """
+    gen = generator or make_generator(config)
+    S = config.simulation.n_scenarios
+    if not 0 <= index < S:
+        raise IndexError(f"scenario index {index} out of range 0..{S - 1}")
+    chunk = config.simulation.chunk_size
+
+    target = None
+    seen = 0
+    for bundle in gen.iter_chunks(S, chunk):
+        c = bundle.n_scenarios
+        if seen <= index < seen + c:
+            target = _slice_bundle(bundle, index - seen)
+            break
+        seen += c
+    if target is None:  # pragma: no cover - guards an under-filling generator
+        raise RuntimeError(f"generator did not yield scenario {index}")
+
+    res = simulate(config, returns=target, capture_balances=True)
+    begin = res.balances_begin[0]          # (T, n_asset)
+    end = res.balances_end[0]              # (T, n_asset)
+    columns = {
+        "begin": begin.sum(axis=1),
+        "ext_income": res.external_income,
+        "invest_income": res.investment_income[0],
+        "savings": res.savings,
+        "capital": res.capital_return[0],
+        "spending": res.spending_funded[0],
+        "tax": res.tax_income[0] + res.tax_sale[0],
+        "end": res.net_worth[0],
+        "stocks": end[:, STOCKS],
+        "bonds": end[:, BONDS],
+        "cash": end[:, CASH],
+    }
+    return ScenarioWalk(
+        index=index,
+        net_worth=res.net_worth[0],
+        terminal_net_worth=float(res.terminal_net_worth[0]),
+        first_failure_period=int(res.first_failure_period[0]),
+        columns=columns,
+        bundle=target,
+    )
+
+
+def resample_order(bundle: ReturnsBundle, config: RunConfig, n: int = 1000,
+                   seed: int | None = None) -> OrderResult:
+    """Order-of-returns experiment: rerun the drawdown under ``n`` quarter-permutations.
+
+    Parameters
+    ----------
+    bundle : ReturnsBundle
+        A single-scenario bundle (from :func:`replay_scenario`).
+    config : RunConfig
+        The run configuration.
+    n : int
+        Number of reorderings to draw.
+    seed : int, optional
+        Seed for the permutation RNG (``None`` → nondeterministic; a "throwaway" analysis).
+
+    Notes
+    -----
+    Each reordering permutes the 160-quarter time axis (no replacement) *identically*
+    across assets, so within-quarter cross-asset correlation is preserved and only the
+    *order* of returns changes — isolating sequence-of-returns risk from the return
+    environment. Income yield is constant across quarters, so reordering leaves it
+    unchanged. Not persisted.
+    """
+    cap = bundle.capital_return[0]          # (T, n_asset)
+    nom = bundle.nominal_total[0]
+    yld = bundle.income_yield[0]
+    T = cap.shape[0]
+    rng = np.random.default_rng(seed)
+    perms = np.argsort(rng.random((n, T)), axis=1)   # (n, T), each row a permutation
+    reordered = ReturnsBundle(
+        capital_return=cap[perms],                    # (n, T, n_asset)
+        income_yield=np.broadcast_to(yld, (n, T, yld.shape[-1])).copy(),
+        nominal_total=nom[perms],
+        overall_inflation_q=bundle.overall_inflation_q,
+    )
+    res = simulate(config, returns=reordered)
+    # Reference: the unpermuted scenario's own terminal.
+    ref = simulate(config, returns=bundle).terminal_net_worth[0]
+    return OrderResult(
+        terminal=res.terminal_net_worth,
+        first_failure_period=res.first_failure_period,
+        reference_terminal=float(ref),
+        n=n,
+        seed=seed,
+    )

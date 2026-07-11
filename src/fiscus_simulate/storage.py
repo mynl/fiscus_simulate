@@ -70,6 +70,7 @@ class LoadedRun:
     scalars: pd.DataFrame
     joint: pd.DataFrame | None = None  # terminal-NW-ranked outcomes (None on legacy runs)
     terminal_hist: pd.DataFrame | None = None  # terminal-wealth histogram (None on legacy runs)
+    outcomes: pd.DataFrame | None = None  # per-scenario outcome vectors (None on legacy runs)
 
 
 # ------------------------------------------------------------------ reproducibility
@@ -160,6 +161,23 @@ def _summary_frame(sm: SimulationSummary) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["metric", "value"])
 
 
+def _outcomes_frame(outcomes: dict) -> pd.DataFrame:
+    """Per-scenario outcome vectors (row index = scenario index in the 0..S-1 cube).
+
+    A bounded marginal (~a few MB at 100k paths) that preserves scenario identity so the
+    Details view can map a terminal-net-worth percentile back to actual scenarios — NOT
+    the full 100k×160 cube.
+    """
+    terminal = np.asarray(outcomes["terminal_net_worth"])
+    return pd.DataFrame({
+        "scenario": np.arange(len(terminal)),
+        "terminal_net_worth": terminal,
+        "first_failure_period": np.asarray(outcomes["first_failure_period"]),
+        "min_net_worth": np.asarray(outcomes["min_net_worth"]),
+        "total_tax": np.asarray(outcomes["total_tax"]),
+    })
+
+
 def _paths_frame(sample: dict) -> pd.DataFrame:
     nw = sample["net_worth"]
     k, T = nw.shape
@@ -198,6 +216,8 @@ def save_run(result, config: RunConfig, runs_dir: Path | None = None,
     _scalars_frame(sm).to_parquet(d / "scalars.parquet", index=False)
     _joint_frame(sm).to_parquet(d / "joint.parquet", index=False)
     _terminal_hist_frame(sm).to_parquet(d / "terminal_hist.parquet", index=False)
+    if getattr(result, "outcomes", None) is not None:
+        _outcomes_frame(result.outcomes).to_parquet(d / "outcomes.parquet", index=False)
     if config.simulation.persist_sample_paths > 0:
         _paths_frame(result.sample_paths).to_parquet(d / "paths.parquet", index=False)
 
@@ -232,6 +252,7 @@ def load_run(run_id: str, runs_dir: Path | None = None) -> LoadedRun:
     metadata = json.loads((d / "metadata.json").read_text(encoding="utf-8"))
     joint_path = d / "joint.parquet"
     hist_path = d / "terminal_hist.parquet"
+    outcomes_path = d / "outcomes.parquet"
     return LoadedRun(
         run_id=run_id,
         metadata=metadata,
@@ -242,6 +263,7 @@ def load_run(run_id: str, runs_dir: Path | None = None) -> LoadedRun:
         scalars=pd.read_parquet(d / "scalars.parquet"),
         joint=pd.read_parquet(joint_path) if joint_path.exists() else None,
         terminal_hist=pd.read_parquet(hist_path) if hist_path.exists() else None,
+        outcomes=pd.read_parquet(outcomes_path) if outcomes_path.exists() else None,
     )
 
 

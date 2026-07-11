@@ -3,6 +3,42 @@
 All notable changes to `fiscus_simulate`. Semantic versioning from 1.0.0; each build
 stage bumps the minor. Newest first.
 
+## 1.7.0 — 2026-07-11
+
+Stage 8 — "see inside the simulations": a per-scenario **Details** view with a
+quarter-by-quarter walk, a funnel overlay, and a throwaway order-of-returns experiment
+(a deliberate preview of the sequence-risk prototype).
+
+### Added
+- **Per-scenario outcomes persisted** (`outcomes.parquet`): terminal net worth, first-
+  failure period, minimum net worth and total tax per scenario — a bounded marginal
+  (~a few MB at 100k paths), *not* the full cube. Preserves scenario identity so a
+  terminal-net-worth percentile maps back to actual scenarios. Legacy runs without it are
+  reproduced once from the stored seed and cached (`service.scenario_outcomes`).
+- **Exact single-scenario replay** (`service.replay_scenario`): regenerates one scenario
+  bit-for-bit from the stored seed (streaming return chunks, slicing the one row) and
+  reruns the engine with a new opt-in `simulate(..., capture_balances=True)` that records
+  consolidated per-asset balances each quarter. The reconciliation identity holds every
+  row: `End = Begin + ext_income + invest_income + savings + capital − spend − tax`.
+- **Order-of-returns resampler** (`service.resample_order`): permutes the scenario's 160
+  quarterly returns (no replacement, identical across assets so cross-asset correlation is
+  preserved; inflation constant in V1), reruns the drawdown vectorized over the
+  reorderings, and returns terminal-wealth spread — isolating sequence risk from the return
+  environment. Throwaway (optional seed, not persisted).
+- **Details page** (`/runs/<id>/details`): percentile → scenario picker; scenario tiles
+  (terminal, first shortfall); the scenario overlaid (pink) on the net-worth funnel with
+  the nominal/real toggle; and a Bootstrap tab control — **Consolidated** (csv-grid walk),
+  **By account** ("Not yet implemented" placeholder), **Order of returns** (histogram +
+  stats, with a reorderings/seed form). Full glossary per the self-documenting rule.
+- **Runs list** now offers **Summary** and **Details** buttons per run.
+
+### Tests
+- `capture_balances` columnwise reconciliation; replay terminal-exactness (across chunks,
+  incl. the last) and equivalence to a `generate()` slice; order resample multiset-preserved
+  and seed-deterministic with matching reference terminal; `outcomes.parquet` round-trip and
+  legacy reproduce-on-demand fallback; web Details renders overlay + tabs + order histogram.
+  89 tests green.
+
 ## 1.6.2 — 2026-07-11
 
 Proportional asset input — one dollar figure per asset class, the rest as fractions.

@@ -224,6 +224,62 @@ def run_detail(run_id: str):
     )
 
 
+@bp.route("/runs/<run_id>/details")
+def run_details(run_id: str):
+    """See inside one scenario: pick a percentile, pick a scenario, walk it quarter by
+    quarter, overlay it on the funnel, and run a throwaway order-of-returns experiment."""
+    from .. import service, storage
+
+    state = _state()
+    try:
+        loaded = storage.load_run(run_id, runs_dir=state.runs_dir)
+    except FileNotFoundError:
+        abort(404)
+
+    scale = "real" if request.args.get("scale") == "real" else "nominal"
+    tab = request.args.get("tab", "consolidated")
+    labels = _period_labels(loaded.config)
+    horizon = loaded.config.household.horizon_years
+
+    outcomes = service.scenario_outcomes(loaded)
+    terminal = outcomes["terminal_net_worth"]
+    first_fail = outcomes["first_failure_period"]
+    S = len(terminal)
+    order = np.argsort(terminal, kind="stable")
+
+    p = _clamp_pct(request.args.get("p", "50"))
+    rank = int(np.clip(round(p / 100.0 * (S - 1)), 0, S - 1))
+    lo, hi = max(0, rank - 5), min(S, rank + 6)
+    picker = [_picker_row(int(i), terminal, first_fail, horizon) for i in order[lo:hi]]
+    picker_indices = {row["index"] for row in picker}
+
+    selected = _safe_int(request.args.get("scenario"))
+    if selected is not None and not 0 <= selected < S:
+        selected = None
+
+    order_n = int(np.clip(_safe_int(request.args.get("n")) or 1000, 10, 20000))
+    funnel = _funnel_block(loaded, scale, labels)
+    walk_table = order_block = order_stats = scenario_info = None
+    if selected is not None:
+        walk = service.replay_scenario(loaded.config, selected)
+        funnel = _funnel_block(loaded, scale, labels, overlay=("scenario", walk.net_worth))
+        walk_table = render_table(_walk_frame(walk, labels), name=f"scenario {selected} walk")
+        scenario_info = _scenario_info(walk, loaded.config, labels)
+        result = service.resample_order(walk.bundle, loaded.config, n=order_n,
+                                        seed=_safe_int(request.args.get("seed")))
+        order_block = _order_block(result)
+        order_stats = _order_stats(result, horizon)
+
+    return render_template(
+        "fiscus_simulate/run_details.html",
+        state=state, run=loaded, scale=scale, tab=tab, p=("%g" % p),
+        picker=picker, selected=selected, in_window=(selected in picker_indices),
+        funnel=funnel, scenario_info=scenario_info, walk_table=walk_table,
+        order_block=order_block, order_stats=order_stats,
+        order_n=order_n, order_seed=request.args.get("seed", ""),
+    )
+
+
 @bp.route("/runs/compare")
 def runs_compare():
     """Overlay two runs' net-worth funnels (median + p10/p90) and headline metrics."""
@@ -350,8 +406,13 @@ def _pcol(dfp, p: float, scale: str):
     return v / dfp["deflator"].to_numpy(dtype=float) if scale == "real" else v
 
 
-def _funnel_block(loaded, scale: str, labels: list[str]):
-    """Net-worth funnel: median line with p10–p90 and p30–p70 shaded bands."""
+def _funnel_block(loaded, scale: str, labels: list[str], overlay=None):
+    """Net-worth funnel: median line with p10–p90 and p30–p70 shaded bands.
+
+    ``overlay`` is an optional ``(label, nominal_array)`` single-scenario path drawn on top
+    (Details view). Bands index the percentile series (1–5), so an appended overlay series
+    at index 6 leaves them untouched.
+    """
     dfp = loaded.percentiles
     x = list(range(len(dfp)))
     data = [x] + [list(_pcol(dfp, p, scale)) for p in (90, 70, 50, 30, 10)]
@@ -366,6 +427,13 @@ def _funnel_block(loaded, scale: str, labels: list[str]):
         ],
         "bands": [[1, 5, charts.BAND_OUTER], [2, 4, charts.BAND_INNER]],
     }
+    if overlay is not None:
+        label, arr = overlay
+        y = np.asarray(arr, dtype=float)
+        if scale == "real":
+            y = y / dfp["deflator"].to_numpy(dtype=float)
+        data.append(list(y))
+        spec["series"].append({"label": label, "stroke": charts.LINE_ALT, "width": 2})
     return charts.chart_block("chart-funnel", data, spec, height=360)
 
 
@@ -397,6 +465,110 @@ def _fail_timing_block(loaded, labels: list[str]):
         "series": [{"label": "first failures", "stroke": charts.LINE_ALT, "fill": "rgba(214,51,132,0.25)"}],
     }
     return charts.chart_block("chart-failtiming", data, spec, height=280)
+
+
+# --------------------------------------------------------- details ("see inside")
+def _safe_int(v):
+    """Parse an int from a query arg; None on empty/invalid."""
+    try:
+        return int(str(v).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _clamp_pct(v) -> float:
+    """Parse a percentile query arg into ``[0, 100]`` (default 50 on garbage)."""
+    try:
+        return float(np.clip(float(v), 0.0, 100.0))
+    except (TypeError, ValueError):
+        return 50.0
+
+
+def _years_funded(first_fail: int, horizon: int) -> float:
+    """Years of fully-funded spending: full horizon if never failed, else failure/4."""
+    return float(horizon) if first_fail < 0 else first_fail / 4.0
+
+
+def _picker_row(i: int, terminal, first_fail, horizon: int) -> dict:
+    return {
+        "index": i,
+        "terminal": _fmt_money(float(terminal[i])),
+        "years": f"{_years_funded(int(first_fail[i]), horizon):.1f}",
+    }
+
+
+def _walk_frame(walk, labels: list[str]) -> pd.DataFrame:
+    """The consolidated quarter-by-quarter walk table (money rounded to whole dollars).
+
+    Columns follow the reconciliation identity so the row visibly balances:
+    ``End = Begin + Ext income + Invest income + Savings + Capital G/L − Spending − Tax``;
+    Stocks/Bonds/Cash are the ending composition (consolidated over accounts).
+    """
+    c = walk.columns
+    df = pd.DataFrame({
+        "Period": labels,
+        "Begin": c["begin"],
+        "Ext income": c["ext_income"],
+        "Invest income": c["invest_income"],
+        "Savings": c["savings"],
+        "Capital G/L": c["capital"],
+        "Spending": c["spending"],
+        "Tax": c["tax"],
+        "End": c["end"],
+        "Stocks": c["stocks"],
+        "Bonds": c["bonds"],
+        "Cash": c["cash"],
+    })
+    money = [col for col in df.columns if col != "Period"]
+    df[money] = df[money].round(0).astype("int64")
+    return df
+
+
+def _scenario_info(walk, config, labels: list[str]) -> list[tuple[str, str]]:
+    """Headline tiles for the selected scenario."""
+    ff = walk.first_failure_period
+    if ff < 0:
+        timing = "Never — plan funded throughout"
+    else:
+        timing = f"{labels[ff]} (year {ff // 4 + 1})"
+    return [
+        ("Scenario index", f"#{walk.index}"),
+        ("Terminal net worth", _fmt_money(walk.terminal_net_worth)),
+        ("First shortfall", timing),
+    ]
+
+
+def _order_block(result):
+    """Histogram of terminal wealth across the order-of-returns reorderings."""
+    term = np.asarray(result.terminal, dtype=float)
+    lo = min(0.0, float(term.min()))
+    hi = float(np.percentile(term, 99))
+    if hi <= lo:
+        hi = lo + 1.0
+    counts, edges = np.histogram(np.clip(term, lo, hi), bins=40, range=(lo, hi))
+    centers = (edges[:-1] + edges[1:]) / 2.0
+    data = [list(centers), list(counts.astype(float))]
+    spec = {
+        "type": "bars", "xMoney": True, "yMoney": False,
+        "xLabel": "terminal net worth (reordered)",
+        "series": [{"label": "reorderings", "stroke": charts.LINE_ALT,
+                    "fill": "rgba(214,51,132,0.25)"}],
+    }
+    return charts.chart_block("chart-order", data, spec, height=300)
+
+
+def _order_stats(result, horizon: int) -> list[tuple[str, str]]:
+    """Summary stats for the order-of-returns experiment."""
+    term = np.asarray(result.terminal, dtype=float)
+    p10, p50, p90 = (float(np.percentile(term, q)) for q in (10, 50, 90))
+    fail_frac = float((np.asarray(result.first_failure_period) >= 0).mean())
+    return [
+        ("Reorderings", f"{result.n:,}"),
+        ("Actual (this order)", _fmt_money(result.reference_terminal)),
+        ("Reordered median", _fmt_money(p50)),
+        ("Reordered p10 / p90", f"{_fmt_money(p10)} / {_fmt_money(p90)}"),
+        ("Reorderings that fail", _fmt_pct(fail_frac)),
+    ]
 
 
 # Headline rows reused by the comparison view: (label, summary-metric key).

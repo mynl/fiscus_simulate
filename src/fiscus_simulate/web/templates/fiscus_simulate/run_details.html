@@ -1,0 +1,194 @@
+{% extends "fiscus_simulate/base.html" %}
+{% block title %}{{ run.run_id }} &middot; Details &middot; fiscus_simulate{% endblock %}
+
+{% set _sc = selected if selected is not none else '' %}
+
+{% block help %}
+  <p class="text-muted small mb-2"><strong>Details — see inside one scenario.</strong>
+  Pick a percentile of terminal net worth, choose one of the actual scenarios sitting
+  there, and inspect it: its quarter-by-quarter walk, its path overlaid on the funnel, and
+  a throwaway order-of-returns experiment.</p>
+  <p class="text-muted small mb-0">The chosen scenario is reproduced <em>exactly</em> from
+  the run's stored seed — no full scenario cube is kept on disk.</p>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center mb-3">
+  <h1 class="h3 mb-0">Details <span class="text-secondary fs-6 font-monospace">{{ run.run_id }}</span></h1>
+  <a class="btn btn-outline-secondary btn-sm ms-auto" href="{{ url_for('simulate.run_detail', run_id=run.run_id) }}">
+    <i class="bi bi-bar-chart"></i> Summary</a>
+  <a class="btn btn-outline-secondary btn-sm ms-2" href="{{ url_for('simulate.runs_list') }}">
+    <i class="bi bi-arrow-left"></i> Runs</a>
+</div>
+
+{# --- Percentile + scenario picker --- #}
+<form method="get" class="row g-2 align-items-end mb-3">
+  <div class="col-auto">
+    <label class="form-label small mb-1">Percentile (terminal net worth)</label>
+    <input class="form-control form-control-sm" type="number" name="p" value="{{ p }}"
+           min="0" max="100" step="0.1" style="width:8rem;"
+           onchange="this.form.scenario.value='';this.form.submit();">
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-1">Scenario at this percentile</label>
+    <select class="form-select form-select-sm" name="scenario" style="min-width:22rem;"
+            onchange="this.form.submit();">
+      <option value="">— pick a scenario —</option>
+      {% for s in picker %}
+        <option value="{{ s.index }}" {{ 'selected' if s.index == selected }}>
+          #{{ s.index }} &middot; terminal {{ s.terminal }} &middot; {{ s.years }} yr funded</option>
+      {% endfor %}
+    </select>
+  </div>
+  <input type="hidden" name="scale" value="{{ scale }}">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  <div class="col-auto">
+    <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-search"></i> Inspect</button>
+  </div>
+</form>
+{% if selected is not none and not in_window %}
+  <p class="text-muted small">Showing scenario <strong>#{{ selected }}</strong>, which is
+  outside the current percentile window. Adjust the percentile to relist near it.</p>
+{% endif %}
+
+{% if scenario_info %}
+  <div class="row g-3 mb-4">
+    {% for label, value in scenario_info %}
+      <div class="col-6 col-md-4">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted" style="font-size:.8rem;">{{ label }}</div>
+          <div class="fs-5 fw-semibold">{{ value }}</div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{# --- Funnel with the scenario overlaid --- #}
+<div class="d-flex align-items-center mb-2">
+  <h2 class="h5 mb-0">Net-worth funnel
+    <span class="text-muted small fw-normal">
+      {% if selected is not none %}this scenario (pink) inside the p10–p90 / p30–p70 bands
+      {% else %}median with p10–p90 / p30–p70 bands{% endif %}</span></h2>
+  <div class="btn-group btn-group-sm ms-auto" role="group" aria-label="scale">
+    <a class="btn btn-outline-secondary {{ 'active' if scale == 'nominal' }}"
+       href="?p={{ p }}&amp;scenario={{ _sc }}&amp;tab={{ tab }}&amp;scale=nominal">Nominal</a>
+    <a class="btn btn-outline-secondary {{ 'active' if scale == 'real' }}"
+       href="?p={{ p }}&amp;scenario={{ _sc }}&amp;tab={{ tab }}&amp;scale=real">Real (today's $)</a>
+  </div>
+</div>
+<div class="mb-4">{{ funnel }}</div>
+
+{% if selected is none %}
+  <div class="alert alert-light border">Pick a scenario above to walk it, overlay it, and
+    reorder its returns.</div>
+{% else %}
+  {# --- Tabbed detail: Consolidated | By account | Order --- #}
+  <ul class="nav nav-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link {{ 'active' if tab != 'account' and tab != 'order' }}"
+              data-bs-toggle="tab" data-bs-target="#tab-consolidated" type="button" role="tab">
+        Consolidated</button></li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link {{ 'active' if tab == 'account' }}"
+              data-bs-toggle="tab" data-bs-target="#tab-account" type="button" role="tab">
+        By account</button></li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link {{ 'active' if tab == 'order' }}"
+              data-bs-toggle="tab" data-bs-target="#tab-order" type="button" role="tab">
+        Order of returns</button></li>
+  </ul>
+  <div class="tab-content border border-top-0 rounded-bottom p-3 mb-4">
+
+    {# Consolidated walk #}
+    <div class="tab-pane fade {{ 'show active' if tab != 'account' and tab != 'order' }}"
+         id="tab-consolidated" role="tabpanel">
+      <p class="text-muted small mb-2">Quarter-by-quarter walk, consolidated over accounts.
+        Each row balances: <code>End = Begin + Ext income + Invest income + Savings +
+        Capital G/L − Spending − Tax</code>. Stocks/Bonds/Cash are the ending composition.</p>
+      {{ walk_table }}
+    </div>
+
+    {# By account (not yet implemented) #}
+    <div class="tab-pane fade {{ 'show active' if tab == 'account' }}"
+         id="tab-account" role="tabpanel">
+      <div class="alert alert-light border mb-0">Not yet implemented. The consolidated walk
+        sums over the taxable, tax-deferred and tax-free accounts; a per-account breakdown
+        is a future addition.</div>
+    </div>
+
+    {# Order-of-returns experiment #}
+    <div class="tab-pane fade {{ 'show active' if tab == 'order' }}"
+         id="tab-order" role="tabpanel">
+      <p class="text-muted small mb-2">Hold this scenario's 160 quarterly returns fixed and
+        <strong>reshuffle their order</strong> (no replacement) many times, rerunning the
+        drawdown each time. Only the <em>sequence</em> of returns changes — the return
+        environment and cross-asset correlation are preserved. A throwaway experiment; not
+        persisted.</p>
+      <form method="get" class="row g-2 align-items-end mb-3">
+        <div class="col-auto">
+          <label class="form-label small mb-1">Reorderings</label>
+          <input class="form-control form-control-sm" type="number" name="n" value="{{ order_n }}"
+                 min="10" max="20000" step="10" style="width:8rem;"></div>
+        <div class="col-auto">
+          <label class="form-label small mb-1">Seed <span class="text-muted">(optional)</span></label>
+          <input class="form-control form-control-sm" type="number" name="seed" value="{{ order_seed }}"
+                 placeholder="none" style="width:8rem;"></div>
+        <input type="hidden" name="p" value="{{ p }}">
+        <input type="hidden" name="scenario" value="{{ _sc }}">
+        <input type="hidden" name="scale" value="{{ scale }}">
+        <input type="hidden" name="tab" value="order">
+        <div class="col-auto">
+          <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-shuffle"></i> Reorder</button></div>
+      </form>
+      <div class="row g-3 mb-3">
+        {% for label, value in order_stats %}
+          <div class="col-6 col-md-4 col-xl">
+            <div class="border rounded p-2 h-100">
+              <div class="text-muted" style="font-size:.75rem;">{{ label }}</div>
+              <div class="fw-semibold">{{ value }}</div></div></div>
+        {% endfor %}
+      </div>
+      {{ order_block }}
+    </div>
+  </div>
+{% endif %}
+
+<div class="alert alert-warning model-note mt-3" role="alert">
+  <strong>Model limitations (V1).</strong> Flat-rate taxes; no mortality/morbidity; fixed
+  spending mix; proportional withdrawals; no rebalancing; stylized return generator.
+  A single scenario is one possible future, never a forecast.
+</div>
+{% endblock %}
+
+{% block glossary %}
+<p class="mb-1"><strong>Percentile &amp; scenario.</strong> Scenarios are ranked by
+<em>terminal net worth</em> (nominal net worth at the final quarter). The percentile input
+selects the rank <code>round(p/100 × (S−1))</code>; the list shows that scenario and its
+near neighbors. Each option's <em>years funded</em> is the full horizon if the plan never
+breaks, else the first-shortfall quarter ÷ 4.</p>
+<p class="mb-1"><strong>Reproducing a scenario.</strong> Runs don't store the per-scenario
+cube; the chosen scenario is regenerated <em>bit-for-bit</em> from the run's stored seed
+(the return draw is sequential, so scenario <em>i</em> is the <em>i</em>-th block of
+draws). The engine reruns for that lone path, recording balances every quarter.</p>
+<p class="mb-1"><strong>Consolidated walk.</strong> Per quarter, summed over the taxable,
+tax-deferred and tax-free accounts: <em>Begin</em> = start-of-quarter net worth;
+<em>Ext income</em> = pensions/other external income; <em>Invest income</em> = dividends
+&amp; interest on beginning balances; <em>Savings</em> = pre-retirement contributions;
+<em>Capital G/L</em> = capital return applied to end-of-quarter balances; <em>Spending</em>
+= funded spending (below plan only when assets are exhausted); <em>Tax</em> = income tax +
+sale tax; <em>End</em> = end-of-quarter net worth. The identity <code>End = Begin + Ext
+income + Invest income + Savings + Capital G/L − Spending − Tax</code> holds every row.
+Stocks/Bonds/Cash are ending balances by asset class.</p>
+<p class="mb-1"><strong>Funnel overlay.</strong> The pink line is this scenario's own net
+worth by quarter, drawn over the population bands (p10–p90 outer, p30–p70 inner). It can
+wander outside the bands — a percentile band is a per-quarter cross-section, not any single
+household's path. <em>Real</em> divides each quarter by the inflation deflator (1+π)<sup>t</sup>.</p>
+<p class="mb-0"><strong>Order of returns.</strong> This scenario's 160 quarterly return
+vectors are permuted (no replacement) <em>n</em> times, identically across stocks/bonds/cash
+so within-quarter correlation is preserved; inflation is constant in V1, so it is unaffected.
+The drawdown is rerun for each ordering from the same starting portfolio, isolating
+sequence-of-returns risk from the return environment. The histogram is terminal net worth
+across reorderings; <em>Actual (this order)</em> marks the realized scenario. A seed makes it
+reproducible; left blank it is random. This is a throwaway preview — not saved with the run.</p>
+{% endblock %}

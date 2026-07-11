@@ -51,6 +51,12 @@ class EngineResult:
     realized_gain: np.ndarray      # (S, T)
     funded: np.ndarray             # (S, T) bool
 
+    # --- optional per-period balance capture (only when capture_balances=True) ---
+    # Consolidated-over-accounts asset balances, (S, T, n_asset): beginning-of-period and
+    # end-of-period. None on the hot path so the 100k run allocates nothing extra.
+    balances_begin: np.ndarray | None = None
+    balances_end: np.ndarray | None = None
+
     # --- per-path outcome measures (computed in __post_init__) ---
     first_failure_period: np.ndarray = None  # type: ignore[assignment]
     years_funded: np.ndarray = None          # type: ignore[assignment]
@@ -90,7 +96,7 @@ class EngineResult:
 
 
 def simulate(config: RunConfig, returns: ReturnsBundle | None = None,
-             n_scenarios: int = 1) -> EngineResult:
+             n_scenarios: int = 1, capture_balances: bool = False) -> EngineResult:
     """Run the quarterly engine.
 
     Parameters
@@ -103,6 +109,10 @@ def simulate(config: RunConfig, returns: ReturnsBundle | None = None,
         scenario count sets ``S``.
     n_scenarios : int
         Scenario-axis size when ``returns`` is None (deterministic). Ignored otherwise.
+    capture_balances : bool
+        When True, additionally record consolidated-over-accounts asset balances at the
+        start and end of every period (``(S, T, n_asset)``) — used by the single-scenario
+        "walk" replay. Off by default so the 100k hot path allocates nothing extra.
     """
     if returns is None:
         returns = build_deterministic_returns(config)  # (1, T, n_asset)
@@ -142,8 +152,13 @@ def simulate(config: RunConfig, returns: ReturnsBundle | None = None,
     sales_gross_a = np.zeros((S, T))
     realized_gain_a = np.zeros((S, T))
     funded_a = np.zeros((S, T), dtype=bool)
+    bal_begin = np.zeros((S, T, n_asset)) if capture_balances else None
+    bal_end = np.zeros((S, T, n_asset)) if capture_balances else None
 
     for t in range(T):
+        if capture_balances:
+            bal_begin[:, t, :] = B.sum(axis=1)     # beginning = end of previous period
+
         yld_t = returns.income_yield[:, t, :]      # (Sr, n_asset), Sr in {1, S}
         cap_t = returns.capital_return[:, t, :]    # (Sr, n_asset)
 
@@ -196,6 +211,8 @@ def simulate(config: RunConfig, returns: ReturnsBundle | None = None,
         B *= 1.0 + cap_t[:, None, :]
 
         # 10. Record.
+        if capture_balances:
+            bal_end[:, t, :] = B.sum(axis=1)       # consolidated end-of-period by asset
         net_worth[:, t] = B.sum(axis=(1, 2))
         spending_funded_a[:, t] = spending_funded
         inv_income_a[:, t] = inv_income
@@ -220,4 +237,6 @@ def simulate(config: RunConfig, returns: ReturnsBundle | None = None,
         sales_gross=sales_gross_a,
         realized_gain=realized_gain_a,
         funded=funded_a,
+        balances_begin=bal_begin,
+        balances_end=bal_end,
     )
