@@ -23,7 +23,7 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-SCHEMA_VERSION = "1.2"
+SCHEMA_VERSION = "1.3"
 
 # Numerical tolerance for the spending category-percentage sum check.
 PCT_SUM_TOL = 1e-6
@@ -237,72 +237,95 @@ class InflationAssumptions(_Model):
 
 # -------------------------------------------------------------------------- assets
 class AccountBalances(_Model):
-    """The ``account_type x asset_class -> initial balance`` matrix, plus taxable basis.
+    """Whole-portfolio asset totals in dollars; tax-treatment split and basis as fractions.
 
-    ``taxable_basis`` is the initial cost basis of the **taxable** account's holdings, so
-    a sale can be split into gain vs. return of principal. Only the taxable account needs
-    it (tax-deferred is taxed on full withdrawal; tax-free is never taxed). If omitted for
-    an asset, basis defaults to market value (no embedded gain). ``cash`` never has a gain.
+    Only ``totals`` is in dollars — the amount of each asset class across the whole
+    household. ``tax_deferred_proportion`` and ``tax_free_proportion`` are the fraction of
+    each asset-class total held in those account types; the **taxable** account is the
+    implied remainder. ``taxable_basis_proportion`` is the cost basis as a fraction of that
+    implied taxable holding (so a sale splits into gain vs. return of principal).
+
+    This anchors one dollar figure per asset class and keeps the composition fixed when the
+    totals are rescaled.
+
+    Notes
+    -----
+    All proportions are **fractions in [0, 1]** (NOT percentages). Per asset,
+    ``tax_deferred_proportion + tax_free_proportion <= 1`` so the taxable remainder is
+    non-negative. ``cash`` typically sits wholly in the taxable account with basis 1.0
+    (no embedded gain).
     """
 
-    balances: dict[AccountType, dict[AssetClass, float]]
-    taxable_basis: dict[AssetClass, float] | None = None
+    totals: dict[AssetClass, float]
+    tax_deferred_proportion: dict[AssetClass, float]
+    tax_free_proportion: dict[AssetClass, float]
+    taxable_basis_proportion: dict[AssetClass, float]
 
-    @field_validator("balances")
+    @field_validator("totals", "tax_deferred_proportion", "tax_free_proportion",
+                     "taxable_basis_proportion")
     @classmethod
-    def _complete_and_non_negative(
-        cls, v: dict[AccountType, dict[AssetClass, float]]
-    ) -> dict[AccountType, dict[AssetClass, float]]:
-        missing_acct = set(ACCOUNT_TYPES) - set(v)
-        if missing_acct:
-            raise ValueError(f"balances missing account types: {sorted(a.value for a in missing_acct)}")
-        for acct, row in v.items():
-            missing_asset = set(ASSET_CLASSES) - set(row)
-            if missing_asset:
-                raise ValueError(
-                    f"balances[{acct.value}] missing asset classes: "
-                    f"{sorted(a.value for a in missing_asset)}"
-                )
-            for asset, bal in row.items():
-                if bal < 0:
-                    raise ValueError(f"balance {acct.value}/{asset.value} is negative: {bal}")
+    def _complete_assets(cls, v: dict[AssetClass, float]) -> dict[AssetClass, float]:
+        missing = set(ASSET_CLASSES) - set(v)
+        if missing:
+            raise ValueError(f"missing asset classes: {sorted(a.value for a in missing)}")
+        return v
+
+    @field_validator("totals")
+    @classmethod
+    def _totals_non_negative(cls, v: dict[AssetClass, float]) -> dict[AssetClass, float]:
+        for asset, amount in v.items():
+            if amount < 0:
+                raise ValueError(f"totals[{asset.value}] is negative: {amount}")
+        return v
+
+    @field_validator("tax_deferred_proportion", "tax_free_proportion",
+                     "taxable_basis_proportion")
+    @classmethod
+    def _fraction_range(cls, v: dict[AssetClass, float]) -> dict[AssetClass, float]:
+        for asset, x in v.items():
+            if not 0.0 <= x <= 1.0:
+                raise ValueError(f"proportion for {asset.value} out of [0, 1]: {x}")
         return v
 
     @model_validator(mode="after")
-    def _basis_within_market(self) -> AccountBalances:
-        if self.taxable_basis is None:
-            return self
-        taxable = self.balances[AccountType.taxable]
-        for asset, basis in self.taxable_basis.items():
-            if basis < 0:
-                raise ValueError(f"taxable_basis[{asset.value}] is negative: {basis}")
-            if basis > taxable[asset] + 1e-6:
+    def _taxable_remainder_non_negative(self) -> AccountBalances:
+        for asset in ASSET_CLASSES:
+            share = self.tax_deferred_proportion[asset] + self.tax_free_proportion[asset]
+            if share > 1.0 + 1e-9:
                 raise ValueError(
-                    f"taxable_basis[{asset.value}] {basis} exceeds market value {taxable[asset]}"
+                    f"tax_deferred_proportion + tax_free_proportion for {asset.value} "
+                    f"exceeds 1 (taxable would be negative): {share}"
                 )
         return self
 
+    def amounts(self) -> dict[AccountType, dict[AssetClass, float]]:
+        """Reconstruct the ``account_type x asset_class`` dollar matrix (taxable = remainder)."""
+        out: dict[AccountType, dict[AssetClass, float]] = {acct: {} for acct in ACCOUNT_TYPES}
+        for asset in ASSET_CLASSES:
+            total = self.totals[asset]
+            td = total * self.tax_deferred_proportion[asset]
+            tf = total * self.tax_free_proportion[asset]
+            out[AccountType.tax_deferred][asset] = td
+            out[AccountType.tax_free][asset] = tf
+            out[AccountType.taxable][asset] = total - td - tf
+        return out
+
     def resolved_taxable_basis(self) -> dict[AssetClass, float]:
-        """Taxable-account basis by asset, defaulting missing entries to market value."""
-        taxable = self.balances[AccountType.taxable]
-        given = self.taxable_basis or {}
-        return {asset: float(given.get(asset, taxable[asset])) for asset in ASSET_CLASSES}
+        """Taxable cost basis by asset: implied taxable holding x basis fraction."""
+        taxable = self.amounts()[AccountType.taxable]
+        return {a: float(taxable[a] * self.taxable_basis_proportion[a]) for a in ASSET_CLASSES}
 
     def total(self) -> float:
-        """Aggregate balance across all account types and asset classes."""
-        return sum(bal for row in self.balances.values() for bal in row.values())
+        """Aggregate household wealth across all asset classes."""
+        return float(sum(self.totals.values()))
 
     def by_account(self) -> dict[AccountType, float]:
         """Total balance by account type."""
-        return {acct: sum(row.values()) for acct, row in self.balances.items()}
+        return {acct: sum(row.values()) for acct, row in self.amounts().items()}
 
     def by_asset(self) -> dict[AssetClass, float]:
-        """Total balance by asset class (aggregated over accounts)."""
-        out = {asset: 0.0 for asset in ASSET_CLASSES}
-        for row in self.balances.values():
-            for asset, bal in row.items():
-                out[asset] += bal
-        return out
+        """Total balance by asset class (= the totals)."""
+        return {a: float(self.totals[a]) for a in ASSET_CLASSES}
 
 
 # ------------------------------------------------------------------------- returns
@@ -457,21 +480,19 @@ class RunConfig(_Model):
                 },
             ),
             balances=AccountBalances(
-                balances={
-                    AccountType.taxable: {
-                        AssetClass.stocks: 300_000, AssetClass.bonds: 100_000,
+                # Whole-portfolio dollars per asset class (total 1,250,000).
+                totals={AssetClass.stocks: 850_000, AssetClass.bonds: 350_000,
                         AssetClass.cash: 50_000},
-                    AccountType.tax_deferred: {
-                        AssetClass.stocks: 400_000, AssetClass.bonds: 200_000,
-                        AssetClass.cash: 0},
-                    AccountType.tax_free: {
-                        AssetClass.stocks: 150_000, AssetClass.bonds: 50_000,
-                        AssetClass.cash: 0},
-                },
-                # Embedded gains in the taxable account so example runs exercise gains tax.
-                taxable_basis={
-                    AssetClass.stocks: 200_000, AssetClass.bonds: 90_000,
-                    AssetClass.cash: 50_000},
+                # Fractions (0-1) of each asset-class total by tax treatment; taxable is
+                # the implied remainder (stocks 0.30, bonds 0.35, cash 1.00).
+                tax_deferred_proportion={AssetClass.stocks: 0.5, AssetClass.bonds: 0.5,
+                                         AssetClass.cash: 0.0},
+                tax_free_proportion={AssetClass.stocks: 0.2, AssetClass.bonds: 0.15,
+                                     AssetClass.cash: 0.0},
+                # Basis as a fraction of the implied taxable holding (embedded gains for
+                # stocks/bonds so example runs exercise the gains tax).
+                taxable_basis_proportion={AssetClass.stocks: 0.7, AssetClass.bonds: 0.9,
+                                          AssetClass.cash: 1.0},
             ),
             return_generator=ReturnGeneratorConfig(
                 real_return={AssetClass.stocks: 0.05, AssetClass.bonds: 0.015,

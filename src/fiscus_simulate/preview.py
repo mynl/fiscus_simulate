@@ -62,7 +62,7 @@ def config_preview(cfg: RunConfig) -> ConfigPreview:
     portfolio_income = sum(by_asset[a] * yields[a] for a in ASSET_CLASSES)
 
     # Taxable-account accrual tax at t=0: stocks -> dividend, bonds/cash -> interest.
-    taxable_row = bal.balances[AccountType.taxable]
+    taxable_row = bal.amounts()[AccountType.taxable]
     rates = cfg.tax_rates
     dividend_income = taxable_row[AssetClass.stocks] * yields[AssetClass.stocks]
     interest_income = (

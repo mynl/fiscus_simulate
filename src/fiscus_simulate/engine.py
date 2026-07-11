@@ -115,11 +115,13 @@ def simulate(config: RunConfig, returns: ReturnsBundle | None = None,
     td_rate = config.tax_rates.tax_deferred_withdrawal
     gain_rate = config.tax_rates.realized_gain
 
-    # Initial state (broadcast the single config over S).
+    # Initial state (broadcast the single config over S). Reconstruct the account x asset
+    # dollar matrix from the proportional config (taxable = implied remainder).
+    amounts = config.balances.amounts()
     B = np.zeros((S, n_acct, n_asset))
     for ai, acct in enumerate(ACCOUNT_TYPES):
         for si, asset in enumerate(ASSET_CLASSES):
-            B[:, ai, si] = config.balances.balances[acct][asset]
+            B[:, ai, si] = amounts[acct][asset]
     basis0 = config.balances.resolved_taxable_basis()
     basis = np.tile(np.array([basis0[a] for a in ASSET_CLASSES]), (S, 1))
 

@@ -7,7 +7,6 @@ from fiscus_simulate.assets import proportional_sale
 from fiscus_simulate.engine import simulate
 from fiscus_simulate.models import (
     ASSET_CLASSES,
-    AccountType,
     AssetClass,
     IncomeStream,
     RunConfig,
@@ -39,12 +38,12 @@ def _flat_cfg(horizon_years=1):
         person.retirement_age = None       # already retired: spend from t0, no savings
         person.annual_real_savings = 0.0
     cfg.spending.total_annual_real = 40_000  # 10,000 / quarter
-    cfg.balances.balances = {
-        AccountType.taxable: {AssetClass.stocks: 0.0, AssetClass.bonds: 0.0, AssetClass.cash: 100_000.0},
-        AccountType.tax_deferred: {AssetClass.stocks: 0.0, AssetClass.bonds: 0.0, AssetClass.cash: 0.0},
-        AccountType.tax_free: {AssetClass.stocks: 0.0, AssetClass.bonds: 0.0, AssetClass.cash: 0.0},
-    }
-    cfg.balances.taxable_basis = None
+    # Only taxable cash: all in the taxable account (zero tax-deferred/tax-free share).
+    cfg.balances.totals = {AssetClass.stocks: 0.0, AssetClass.bonds: 0.0,
+                           AssetClass.cash: 100_000.0}
+    cfg.balances.tax_deferred_proportion = {a: 0.0 for a in ASSET_CLASSES}
+    cfg.balances.tax_free_proportion = {a: 0.0 for a in ASSET_CLASSES}
+    cfg.balances.taxable_basis_proportion = {a: 1.0 for a in ASSET_CLASSES}
     return cfg
 
 
@@ -108,7 +107,7 @@ def test_pre_retirement_savings_accumulate_no_spending():
 
 def test_exhaustion_failure_detected():
     cfg = _flat_cfg(horizon_years=1)
-    cfg.balances.balances[AccountType.taxable][AssetClass.cash] = 15_000.0
+    cfg.balances.totals[AssetClass.cash] = 15_000.0  # all taxable cash (see _flat_cfg)
     res = simulate(cfg)
     # q0 funds 10k (5k left); q1 needs 10k, only 5k available -> fails from q1.
     assert res.funded[0, 0]

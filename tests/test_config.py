@@ -70,10 +70,10 @@ def test_household_must_have_two_people():
                   start_date="2026-03-31")
 
 
-def test_negative_balance_rejected():
+def test_negative_total_rejected():
     cfg = RunConfig.default()
     data = cfg.model_dump(mode="json")
-    data["balances"]["balances"]["taxable"]["cash"] = -1
+    data["balances"]["totals"]["cash"] = -1
     with pytest.raises(ValidationError, match="negative"):
         RunConfig.model_validate(data)
 
@@ -129,20 +129,36 @@ def test_balances_helpers():
     assert abs(sum(by_asset.values()) - cfg.balances.total()) < 1e-6
 
 
-def test_taxable_basis_cannot_exceed_market():
+def test_basis_proportion_out_of_range_rejected():
     cfg = RunConfig.default()
     data = cfg.model_dump(mode="json")
-    data["balances"]["taxable_basis"]["stocks"] = 10_000_000  # > market
-    with pytest.raises(ValidationError, match="exceeds market value"):
+    data["balances"]["taxable_basis_proportion"]["stocks"] = 1.5  # fractions are 0-1
+    with pytest.raises(ValidationError, match="out of"):
         RunConfig.model_validate(data)
 
 
-def test_resolved_basis_defaults_to_market():
+def test_account_proportions_over_one_rejected():
     cfg = RunConfig.default()
-    cfg.balances.taxable_basis = None
+    data = cfg.model_dump(mode="json")
+    data["balances"]["tax_deferred_proportion"]["stocks"] = 0.8
+    data["balances"]["tax_free_proportion"]["stocks"] = 0.5  # 1.3 > 1 -> taxable negative
+    with pytest.raises(ValidationError, match="exceeds 1"):
+        RunConfig.model_validate(data)
+
+
+def test_amounts_and_resolved_basis():
+    cfg = RunConfig.default()
+    amt = cfg.balances.amounts()
+    # taxable = total x (1 - td - tf); default stocks: 850k x (1 - 0.5 - 0.2) = 255k.
+    assert amt[AccountType.taxable][AssetClass.stocks] == 850_000 * (1 - 0.5 - 0.2)
+    assert amt[AccountType.tax_deferred][AssetClass.stocks] == 850_000 * 0.5
+    # basis = implied taxable holding x basis fraction (stocks 255k x 0.7).
     resolved = cfg.balances.resolved_taxable_basis()
-    taxable = cfg.balances.balances[AccountType.taxable]
-    assert resolved[AssetClass.stocks] == taxable[AssetClass.stocks]
+    assert resolved[AssetClass.stocks] == 850_000 * 0.3 * 0.7
+    # totals reconstruct exactly: taxable + tax_deferred + tax_free == total per asset.
+    for a in AssetClass:
+        got = sum(amt[acct][a] for acct in AccountType)
+        assert abs(got - cfg.balances.totals[a]) < 1e-6
 
 
 def test_clone_is_independent():

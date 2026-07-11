@@ -3,6 +3,31 @@
 All notable changes to `fiscus_simulate`. Semantic versioning from 1.0.0; each build
 stage bumps the minor. Newest first.
 
+## 1.6.2 — 2026-07-11
+
+Proportional asset input — one dollar figure per asset class, the rest as fractions.
+
+### Changed (breaking config schema → `schema_version` 1.3)
+- **`AccountBalances` redesigned.** Was a full 3×3 dollar matrix + dollar basis; now:
+  - `totals` — whole-portfolio **dollars** per asset class (the only dollar input);
+  - `tax_deferred_proportion`, `tax_free_proportion` — **fractions (0–1)** of each
+    asset-class total held in those account types; the **taxable** account is the implied
+    remainder;
+  - `taxable_basis_proportion` — cost basis as a **fraction (0–1)** of the implied taxable
+    holding.
+  Rescaling the totals now holds the composition fixed. Validators: totals ≥ 0, each
+  proportion in [0, 1], and `tax_deferred + tax_free ≤ 1` per asset (taxable ≥ 0).
+- New method `AccountBalances.amounts()` reconstructs the account × asset dollar matrix;
+  `resolved_taxable_basis()`, `total()`, `by_account()`, `by_asset()` keep the same API, so
+  the engine (`engine.py`) and preview are one-line changes. Config editor gains a note
+  that the proportions are fractions, not percentages; glossary updated (the rule).
+
+### Tests
+- `amounts()` reconstruction + taxable-remainder identity; basis = taxable × fraction;
+  negative total, out-of-range basis fraction, and `td+tf > 1` all rejected. `_flat_cfg`
+  ported to the new fields. Preview/wealth-total figures unchanged (by-asset totals held).
+  78 tests green. `fixtures/example_config.yaml` regenerated.
+
 ## 1.6.1 — 2026-07-10
 
 ### Fixed

@@ -108,6 +108,10 @@
     </div>
   </div>
 
+  <div class="form-text mb-1">Under <code>balances</code>: <code>totals</code> are dollars
+    per asset class; <code>tax_deferred_proportion</code>, <code>tax_free_proportion</code>
+    and <code>taxable_basis_proportion</code> are <strong>fractions (0&ndash;1)</strong>,
+    not percentages. The taxable account is the implied remainder.</div>
   <textarea class="form-control font-monospace" name="yaml" rows="28" spellcheck="false"
             style="font-size:.85rem;">{{ yaml_text }}</textarea>
 </form>
@@ -126,8 +130,10 @@
 
 {% block glossary %}
 {% if preview %}
-<p class="mb-1"><strong>Household wealth</strong> = sum of all account × asset-class
-balances. <strong>Portfolio income / yr</strong> = Σ (balance × annual income yield)
+<p class="mb-1"><strong>Household wealth</strong> = sum of the asset-class
+<code>totals</code> (dollars). Each account's holding = total × its proportion (fractions
+0–1); the taxable account is the remainder. <strong>Portfolio income / yr</strong> =
+Σ (balance × annual income yield)
 across every account (gross, before tax). <strong>Est. tax now</strong> applies the
 taxable account's rates only: dividend rate × taxable-stock income + interest rate ×
 taxable bond/cash income (tax-deferred and tax-free income is untaxed on accrual).</p>
