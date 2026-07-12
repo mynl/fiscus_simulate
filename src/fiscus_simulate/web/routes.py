@@ -264,11 +264,13 @@ def run_details(run_id: str):
 
     order_n = int(np.clip(_safe_int(request.args.get("n")) or 1000, 10, 20000))
     funnel = _funnel_block(loaded, scale, labels)
-    walk_table = order_block = order_stats = scenario_info = None
+    walk_table = walk_by_account = order_block = order_stats = scenario_info = None
     if selected is not None:
         walk = service.replay_scenario(loaded.config, selected)
         funnel = _funnel_block(loaded, scale, labels, overlay=("scenario", walk.net_worth))
         walk_table = render_table(_walk_frame(walk, labels), name=f"scenario {selected} walk")
+        walk_by_account = render_table(_walk_frame_by_account(walk, labels),
+                                       name=f"scenario {selected} by account")
         scenario_info = _scenario_info(walk, loaded.config, labels)
         result = service.resample_order(walk.bundle, loaded.config, n=order_n,
                                         seed=_safe_int(request.args.get("seed")))
@@ -280,6 +282,7 @@ def run_details(run_id: str):
         state=state, run=loaded, scale=scale, tab=tab, p=("%g" % p),
         picker=picker, selected=selected, in_window=(selected in picker_indices),
         funnel=funnel, scenario_info=scenario_info, walk_table=walk_table,
+        walk_by_account=walk_by_account,
         order_block=order_block, order_stats=order_stats,
         order_n=order_n, order_seed=request.args.get("seed", ""),
     )
@@ -528,6 +531,34 @@ def _walk_frame(walk, labels: list[str]) -> pd.DataFrame:
         "Total change": total_change,
     })
     money = [col for col in df.columns if col != "Period"]
+    df[money] = df[money].round(0).astype("int64")
+    return df
+
+
+# Account label + the per-account metric columns (compact headers; the table is wide).
+_ACCT_LABELS = {"taxable": "Taxable", "tax_deferred": "Tax-def", "tax_free": "Tax-free"}
+_ACCT_METRICS = [("stocks", "Stk"), ("bonds", "Bnd"), ("cash", "Csh"),
+                 ("income", "Inc"), ("realized", "RG"), ("unrealized", "ΔUnrl")]
+
+
+def _walk_frame_by_account(walk, labels: list[str]) -> pd.DataFrame:
+    """Per-account quarter-by-quarter walk (taxable / tax-deferred / tax-free + Total).
+
+    For each account: beginning Stocks/Bonds/Cash balances, investment Income, Realized
+    gains (taxable only) and the change in Unrealized gains. Wide by design.
+    """
+    ac = walk.account_columns
+    data: dict[str, object] = {"Period": labels}
+    totals = {key: None for key, _ in _ACCT_METRICS}
+    for acct, label in _ACCT_LABELS.items():
+        cols = ac[acct]
+        for key, short in _ACCT_METRICS:
+            data[f"{label} {short}"] = cols[key]
+            totals[key] = cols[key] if totals[key] is None else totals[key] + cols[key]
+    for key, short in _ACCT_METRICS:
+        data[f"Total {short}"] = totals[key]
+    df = pd.DataFrame(data)
+    money = [c for c in df.columns if c != "Period"]
     df[money] = df[money].round(0).astype("int64")
     return df
 

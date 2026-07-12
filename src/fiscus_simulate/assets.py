@@ -109,3 +109,106 @@ def proportional_sale(
         balances=balances, basis=basis, gross=gross, tax=tax,
         realized_gain=realized_gain, funded=funded.astype(bool).reshape(S),
     )
+
+
+# Default liquidation priority: spend taxable first, then tax-deferred, preserve tax-free.
+DEFAULT_SALE_ORDER: tuple[int, ...] = (TAXABLE, TAX_DEFERRED, TAX_FREE)
+
+
+def ordered_sale(
+    balances: np.ndarray,
+    basis: np.ndarray,
+    delta: np.ndarray,
+    td_rate: float,
+    gain_rate: float,
+    order: tuple[int, ...] = DEFAULT_SALE_ORDER,
+) -> SaleResult:
+    """Sell to raise ``delta`` net-of-tax cash, draining accounts in priority ``order``.
+
+    The conventional tax-efficient sequence (default taxable → tax-deferred → tax-free):
+    fully exhaust each account before touching the next, selling *proportionally across
+    assets within* an account. Because each account has a single blended sale-tax rate
+    ``tau_acct`` (fixed weights within the account), the gross-up stays closed-form —
+    ``G = remaining / (1 - tau_acct)`` per tranche, no iteration — so the whole strategy
+    solves for tax analytically, one account at a time.
+
+    Parameters
+    ----------
+    balances : ndarray, shape (S, 3, 3)
+        Current balances (spendable cash already applied to the pool by the caller).
+    basis : ndarray, shape (S, 3)
+        Taxable-account cost basis by asset.
+    delta : ndarray, shape (S,)
+        Net cash still needed per scenario (0 where nothing must be sold).
+    td_rate, gain_rate : float
+        Tax-deferred withdrawal rate; realized capital-gain rate.
+    order : tuple of int
+        Account indices in draw-down priority (default :data:`DEFAULT_SALE_ORDER`).
+
+    Notes
+    -----
+    Returns the same :class:`SaleResult` as :func:`proportional_sale`; ``funded`` is False
+    where the ordered accounts cannot raise ``delta``. Realized gain and basis step-down
+    apply to the taxable account only.
+    """
+    balances = balances.astype(float, copy=True)
+    basis = basis.astype(float, copy=True)
+    S = balances.shape[0]
+    remaining = np.maximum(np.asarray(delta, dtype=float), 0.0)
+
+    gross = np.zeros(S)
+    tax = np.zeros(S)
+    realized_gain = np.zeros(S)
+
+    for acct in order:
+        market = balances[:, acct, :]                    # (S, 3) view
+        # Per-asset effective sale-tax rate within this account.
+        r = np.zeros((S, 3))
+        gain_ratio = np.zeros((S, 3))
+        if acct == TAXABLE:
+            with np.errstate(divide="ignore", invalid="ignore"):
+                gain_ratio = np.where(
+                    market > _EPS, (market - basis) / np.where(market > _EPS, market, 1.0), 0.0
+                )
+            gain_ratio = np.clip(gain_ratio, 0.0, 1.0)
+            gain_ratio[:, CASH] = 0.0
+            r[:, STOCKS] = gain_rate * gain_ratio[:, STOCKS]
+            r[:, BONDS] = gain_rate * gain_ratio[:, BONDS]
+        elif acct == TAX_DEFERRED:
+            r[:] = td_rate
+        # TAX_FREE: rate stays zero.
+
+        acct_total = market.sum(axis=1)                  # (S,)
+        safe = np.where(acct_total > _EPS, acct_total, 1.0)
+        weights = market / safe[:, None]
+        tau = (weights * r).sum(axis=1)                  # (S,)
+
+        need_here = remaining > _EPS
+        denom = 1.0 - tau
+        g_full = np.where(denom > _EPS, remaining / np.where(denom > _EPS, denom, 1.0), np.inf)
+        g = np.where(need_here, np.minimum(g_full, acct_total), 0.0)
+
+        sold = weights * g[:, None]                      # (S, 3)
+        t_here = (sold * r).sum(axis=1)
+        net_here = g - t_here
+
+        if acct == TAXABLE:
+            realized_gain += (sold[:, STOCKS] * gain_ratio[:, STOCKS]
+                              + sold[:, BONDS] * gain_ratio[:, BONDS])
+            sold_sb = sold[:, STOCKS:BONDS + 1]
+            market_sb = market[:, STOCKS:BONDS + 1]
+            sold_frac = np.where(
+                market_sb > _EPS, sold_sb / np.where(market_sb > _EPS, market_sb, 1.0), 0.0
+            )
+            basis[:, STOCKS:BONDS + 1] *= 1.0 - sold_frac
+
+        balances[:, acct, :] = market - sold
+        gross += g
+        tax += t_here
+        remaining = np.maximum(remaining - net_here, 0.0)
+
+    funded = remaining <= _EPS
+    return SaleResult(
+        balances=balances, basis=basis, gross=gross, tax=tax,
+        realized_gain=realized_gain, funded=funded.astype(bool).reshape(S),
+    )

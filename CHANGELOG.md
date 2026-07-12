@@ -3,6 +3,48 @@
 All notable changes to `fiscus_simulate`. Semantic versioning from 1.0.0; each build
 stage bumps the minor. Newest first.
 
+## 1.9.0 — 2026-07-12
+
+Computed-tax sales engine (ordered draw-down + RMDs), life-actuarial order of operations,
+debt-funded ruin, and the per-account "By account" walk.
+
+### Changed — engine order of operations (life-actuarial: expense BOP, income EOP)
+- Spending is paid at the **start** of the quarter from taxable cash (targeted by the prior
+  quarter, so no start-of-quarter sale is normally needed). Investment income, capital
+  return and external income (pensions / Social Security) land at **end** of quarter. A
+  single end-of-quarter reconciliation refills cash to *next* quarter's spend — investing
+  any surplus in taxable stocks/bonds at the overall mix, or **ordered-selling** any
+  shortfall — then all tax is settled. The reconciliation identity is unchanged in form.
+- **Ordered, tax-efficient liquidation** (`assets.ordered_sale`): drain **taxable →
+  tax-deferred → tax-free**, proportionally within each account, with the analytic gross-up
+  solved one account tranche at a time. Selectable via `WithdrawalPolicy.kind`
+  (`"ordered"` default | `"proportional"`) and `order`.
+- **Required minimum distributions** (`rmd.py`, IRS Uniform Lifetime Table): once the elder
+  person reaches `rmd_start_age` (default **75**; SECURE Act 2.0), a minimum tax-deferred
+  withdrawal is forced each year (¼ per quarter), taxed as ordinary income; surplus is
+  reinvested to taxable. `WithdrawalPolicy` gains `rmd_enabled` / `rmd_start_age`.
+- **Ruin is funded by debt, not smoothed.** V1 keeps spending on plan even once assets are
+  exhausted; the shortfall becomes negative cash, so net worth goes **negative** and shows
+  the true depth of failure. "Failed" now means insolvent (net worth < 0); minimum/terminal
+  net worth and the "years funded" figure are meaningful (no floor at zero). The terminal
+  histogram clips both tails.
+
+### Added — per-account walk
+- The Details **"By account"** tab (previously a placeholder) shows the walk split across
+  taxable / tax-deferred / tax-free / Total: beginning Stocks/Bonds/Cash, investment income,
+  realized gains (taxable only) and change in unrealized gains, per quarter. Backed by new
+  opt-in per-account capture in the engine (replay path only; hot path untouched).
+
+### Web / fixes
+- Chart y-axis: strip wasted trailing zeros (2M, not 2.00M) and reserve width so large or
+  negative labels aren't clipped; more bottom margin so the hover legend doesn't crowd the
+  next element.
+
+### Tests
+- Ordered-sale micro-cases (`test_sales.py`); RMD table (`test_rmd.py`); engine behaviors —
+  RMD forces tax-deferred withdrawals, income is genuinely EOP, ordered/proportional both
+  reconcile, debt-funded ruin exposes negative net worth. 104 green.
+
 ## 1.8.0 — 2026-07-11
 
 Retired-household default, computed-tax framing, and a richer config preview + walk.

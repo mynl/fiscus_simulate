@@ -31,7 +31,8 @@
       function money(v) {
         if (v == null) return "";
         var a = Math.abs(v);
-        if (a >= 1e6) return (v / 1e6).toFixed(2) + "M";
+        // Strip trailing zeros so integer amounts don't waste width (2M, not 2.00M).
+        if (a >= 1e6) return (v / 1e6).toFixed(2).replace(/\.?0+$/, "") + "M";
         if (a >= 1e3) return (v / 1e3).toFixed(0) + "k";
         return Math.round(v).toString();
       }
@@ -64,7 +65,8 @@
                 return xMoney ? money(v) : v;
               });
             } },
-          { values: function (u, vals) { return vals.map(function (v) { return yMoney ? money(v) : v; }); } }
+          { size: 58,   // reserve width so large/negative labels (e.g. -7.56M) aren't clipped
+            values: function (u, vals) { return vals.map(function (v) { return yMoney ? money(v) : v; }); } }
         ]
       };
       if (spec.bands) opts.bands = spec.bands.map(function (b) { return { series: [b[0], b[1]], fill: b[2] }; });
@@ -83,6 +85,9 @@
     .navbar { border-bottom:1px solid #eee; }
     .container-fluid.main { max-width:1600px; margin:0 auto; }
     .model-note { font-size:.85rem; }
+    /* Leave room below charts: the live hover legend grows a line to show current
+       values, so give the following element slack rather than letting it overlap. */
+    .uplot-host { margin-bottom:2.25rem; }
   </style>
   {% block head_extra %}{% endblock %}
 </head>

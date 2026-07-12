@@ -5,8 +5,15 @@ the correctness backbone. The period loop is Python (160 quarters); everything i
 vectorized over the scenario axis so Stage 4 scales to many paths unchanged. This module
 never imports Flask; the web layer reaches it via :mod:`fiscus_simulate.service`.
 
-Order of operations and the reconciliation identity are documented in
-``dev/plan-1.1-stage2-engine.md`` (income-first model). The identity, checked by tests:
+Order of operations (1.9.0, standard life-actuarial timing — **expense BOP, income EOP**):
+spending is paid at the start of the quarter from taxable cash (targeted by the prior
+quarter, so no start-of-quarter sale is normally needed); investment income, capital
+return and external income (pensions / Social Security) land at end of quarter; RMDs are
+forced from tax-deferred accounts once the elder person reaches ``rmd_start_age``; then a
+single end-of-quarter reconciliation refills cash to *next* quarter's spend — investing
+any surplus in taxable stocks/bonds, or selling (ordered, tax-efficient) any shortfall —
+and all tax is settled. The reconciliation identity is unchanged in form and checked by
+tests:
 
     W_end = W_begin + external_income + investment_income + capital_return
             + savings - spending - tax
@@ -17,11 +24,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .assets import BONDS, CASH, STOCKS, TAXABLE, proportional_sale
+from .assets import BONDS, CASH, STOCKS, TAX_DEFERRED, TAXABLE, ordered_sale, proportional_sale
 from .income import build_external_income
 from .models import ACCOUNT_TYPES, ASSET_CLASSES, RunConfig
 from .returns.base import ReturnsBundle
 from .returns.deterministic import build_deterministic_returns
+from .rmd import rmd_fraction
 from .savings import build_savings_path
 from .spending import build_spending_path
 from .tax import income_tax
@@ -56,6 +64,10 @@ class EngineResult:
     # end-of-period. None on the hot path so the 100k run allocates nothing extra.
     balances_begin: np.ndarray | None = None
     balances_end: np.ndarray | None = None
+    # Per-account detail for the "By account" walk (S, T, n_acct[, n_asset]).
+    balances_begin_acct: np.ndarray | None = None  # (S, T, n_acct, n_asset) beginning
+    income_acct: np.ndarray | None = None          # (S, T, n_acct) investment income
+    capital_acct: np.ndarray | None = None         # (S, T, n_acct) capital return
 
     # --- per-path outcome measures (computed in __post_init__) ---
     first_failure_period: np.ndarray = None  # type: ignore[assignment]
@@ -141,6 +153,20 @@ def simulate(config: RunConfig, returns: ReturnsBundle | None = None,
     p_spend_start = config.household.spending_start_period
     # Active planned spending: zero during the pre-retirement accumulation phase.
     plan = np.where(np.arange(T) >= p_spend_start, spend.total, 0.0)
+    # End-of-quarter cash target = *next* quarter's planned spend (0 past the horizon).
+    next_plan = np.zeros(T)
+    next_plan[:-1] = plan[1:]
+
+    # Liquidation strategy + RMD settings.
+    wp = config.withdrawal_policy
+    order_idx = tuple(ACCOUNT_TYPES.index(a) for a in wp.order)
+    elder_age0 = max(p.current_age for p in config.household.people)
+
+    def raise_cash(bal, bas, d):
+        """Raise ``d`` net cash from non-cash assets (ordered or proportional)."""
+        if wp.kind == "ordered":
+            return ordered_sale(bal, bas, d, td_rate, gain_rate, order=order_idx)
+        return proportional_sale(bal, bas, d, td_rate, gain_rate)
 
     # Output buffers
     net_worth = np.zeros((S, T))
@@ -154,63 +180,92 @@ def simulate(config: RunConfig, returns: ReturnsBundle | None = None,
     funded_a = np.zeros((S, T), dtype=bool)
     bal_begin = np.zeros((S, T, n_asset)) if capture_balances else None
     bal_end = np.zeros((S, T, n_asset)) if capture_balances else None
+    bal_begin_acct = np.zeros((S, T, n_acct, n_asset)) if capture_balances else None
+    income_acct_a = np.zeros((S, T, n_acct)) if capture_balances else None
+    capital_acct_a = np.zeros((S, T, n_acct)) if capture_balances else None
 
     for t in range(T):
         if capture_balances:
             bal_begin[:, t, :] = B.sum(axis=1)     # beginning = end of previous period
+            bal_begin_acct[:, t, :, :] = B         # per-account beginning balances
 
         yld_t = returns.income_yield[:, t, :]      # (Sr, n_asset), Sr in {1, S}
         cap_t = returns.capital_return[:, t, :]    # (Sr, n_asset)
 
-        # 4. Investment income on beginning balances, paid into each account's cash.
+        # --- BOP: pay the FULL planned spend from taxable cash (targeted by the prior
+        #     quarter). V1 keeps spending even when assets run out: the shortfall becomes
+        #     negative cash (debt) and the EOP reconciliation sells what it can — so ruin
+        #     is exposed as a negative net worth, not smoothed by cutting the plan. ---
+        B[:, TAXABLE, CASH] -= plan[t]
+        spending_funded = plan[t]
+
+        # --- Through the quarter: income accrues on the invested (post-spend) balances,
+        #     then capital return applies; income is credited as cash. ---
         income_cell = B * yld_t[:, None, :]            # (S, acct, asset)
         acct_income = income_cell.sum(axis=2)          # (S, acct)
         inv_income = income_cell.sum(axis=(1, 2))      # (S,)
-        # Taxable-account income split (from BEGINNING balances) for tax.
         interest_taxable = (B[:, TAXABLE, BONDS] * yld_t[:, BONDS]
                             + B[:, TAXABLE, CASH] * yld_t[:, CASH])
         dividend_taxable = B[:, TAXABLE, STOCKS] * yld_t[:, STOCKS]
 
-        B[:, :, CASH] += acct_income                   # income becomes cash in-account
+        cap_cell = B * cap_t[:, None, :]
+        cap_amt = cap_cell.sum(axis=(1, 2))
+        if capture_balances:
+            income_acct_a[:, t, :] = acct_income        # investment income per account
+            capital_acct_a[:, t, :] = cap_cell.sum(axis=2)  # capital return per account
+        B *= 1.0 + cap_t[:, None, :]                    # EOP capital return
+        B[:, :, CASH] += acct_income                    # income becomes cash in-account
 
-        # 5. Income tax (accrual).
+        # --- EOP: external income + pre-retirement savings arrive as taxable cash. ---
+        B[:, TAXABLE, CASH] += inc.total[t] + savings[t]
+
         tax_inc = income_tax(interest_taxable, dividend_taxable, inc.taxable[t], config.tax_rates)
 
-        # 5b. Pre-retirement savings: invest the contribution in the taxable account at the
-        # current portfolio allocation (bought at market, so basis steps up by the amount).
-        sv = savings[t]
-        if sv > 0.0:
-            asset_tot = B.sum(axis=1)                        # (S, n_asset) across accounts
-            port = asset_tot.sum(axis=1, keepdims=True)      # (S, 1)
-            weights = np.divide(asset_tot, port, out=np.zeros_like(asset_tot), where=port > 0)
-            contrib = sv * weights                           # (S, n_asset)
-            contrib[(port[:, 0] == 0.0), CASH] += sv         # nothing invested yet -> cash
-            B[:, TAXABLE, :] += contrib
-            basis += contrib
+        # --- RMD: force a tax-deferred withdrawal once the elder reaches rmd_start_age. ---
+        rmd_tax = np.zeros(S)
+        if wp.rmd_enabled:
+            age = elder_age0 + t / 4.0
+            frac = rmd_fraction(age)
+            if age >= wp.rmd_start_age and frac > 0.0:
+                td_total = B[:, TAX_DEFERRED, :].sum(axis=1)
+                rmd = td_total * (frac / 4.0)           # quarterly slice of the annual RMD
+                safe_td = np.where(td_total > 1e-12, td_total, 1.0)
+                w_td = B[:, TAX_DEFERRED, :] / safe_td[:, None]
+                B[:, TAX_DEFERRED, :] -= w_td * rmd[:, None]
+                B[:, TAXABLE, CASH] += rmd              # withdrawn to spendable cash
+                rmd_tax = td_rate * rmd
 
-        # 6. Fund from the spendable pool (external + taxable cash) first.
-        taxable_cash = B[:, TAXABLE, CASH]
-        pool = inc.total[t] + taxable_cash
-        need = plan[t] + tax_inc
-        B[:, TAXABLE, CASH] = np.maximum(pool - need, 0.0)   # surplus accumulates as cash
-        delta = np.maximum(need - pool, 0.0)                 # shortfall to raise by selling
+        t0 = tax_inc + rmd_tax                          # tax owed before the cash-target sale
 
-        # 7-8. Proportional sale with analytic gross-up (no-op where delta == 0).
-        sale = proportional_sale(B, basis, delta, td_rate, gain_rate)
+        # --- EOP reconciliation to next quarter's cash target. Set the buffer aside so it
+        #     is not "sold", then raise a shortfall (ordered) or invest a surplus. ---
+        target = next_plan[t]
+        buffer = B[:, TAXABLE, CASH].copy()
+        B[:, TAXABLE, CASH] = 0.0
+        need = t0 + target - buffer                     # net cash to raise (< 0 = surplus)
+
+        sale = raise_cash(B, basis, np.maximum(need, 0.0))  # no-op where need <= 0
         B, basis = sale.balances, sale.basis
+        raised = sale.gross - sale.tax                  # net raised (== need if funded)
+        # Not floored at zero: when assets are exhausted this stays negative (debt).
+        final_cash = buffer + raised - t0
 
-        # Actual spending funded: full plan when funded, else whatever the exhausted
-        # resources cover (the shortfall is the failure). Keeps the reconciliation exact.
-        net_sale = sale.gross - sale.tax
-        spending_funded = np.where(
-            sale.funded, plan[t], np.maximum(pool + net_sale - tax_inc, 0.0)
-        )
+        # Surplus: invest what exceeds the target in taxable stocks/bonds at the overall
+        # stock:bond mix (cash-only portfolio has nowhere to invest -> surplus stays cash).
+        surplus = np.where(need < 0.0, np.maximum(final_cash - target, 0.0), 0.0)
+        tot_s, tot_b = B[:, :, STOCKS].sum(axis=1), B[:, :, BONDS].sum(axis=1)
+        sb = tot_s + tot_b
+        safe_sb = np.where(sb > 1e-12, sb, 1.0)
+        inv_s = surplus * np.where(sb > 1e-12, tot_s / safe_sb, 0.0)
+        inv_b = surplus * np.where(sb > 1e-12, tot_b / safe_sb, 0.0)
+        B[:, TAXABLE, STOCKS] += inv_s
+        B[:, TAXABLE, BONDS] += inv_b
+        basis[:, STOCKS] += inv_s
+        basis[:, BONDS] += inv_b
+        final_cash = np.where(need < 0.0, target + (surplus - inv_s - inv_b), final_cash)
+        B[:, TAXABLE, CASH] = final_cash
 
-        # 9. Apply capital returns to end-of-period balances.
-        cap_amt = (B * cap_t[:, None, :]).sum(axis=(1, 2))
-        B *= 1.0 + cap_t[:, None, :]
-
-        # 10. Record.
+        # --- Record. ---
         if capture_balances:
             bal_end[:, t, :] = B.sum(axis=1)       # consolidated end-of-period by asset
         net_worth[:, t] = B.sum(axis=(1, 2))
@@ -218,10 +273,12 @@ def simulate(config: RunConfig, returns: ReturnsBundle | None = None,
         inv_income_a[:, t] = inv_income
         cap_return_a[:, t] = cap_amt
         tax_income_a[:, t] = tax_inc
-        tax_sale_a[:, t] = sale.tax
+        tax_sale_a[:, t] = rmd_tax + sale.tax
         sales_gross_a[:, t] = sale.gross
         realized_gain_a[:, t] = sale.realized_gain
-        funded_a[:, t] = sale.funded
+        # "Funded" = solvent: spending is always fully paid (via debt if needed), so the
+        # meaningful failure is net worth going negative.
+        funded_a[:, t] = net_worth[:, t] >= -1e-6
 
     return EngineResult(
         config=config,
@@ -239,4 +296,7 @@ def simulate(config: RunConfig, returns: ReturnsBundle | None = None,
         funded=funded_a,
         balances_begin=bal_begin,
         balances_end=bal_end,
+        balances_begin_acct=bal_begin_acct,
+        income_acct=income_acct_a,
+        capital_acct=capital_acct_a,
     )

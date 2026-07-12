@@ -139,9 +139,9 @@ def summarize(
         "total_sales": total_sales[idx],
     }
 
-    # Terminal-wealth histogram for the results chart. Clip the top 1% into the last bin
-    # so a few huge outliers don't squash the visible mass (noted in the glossary).
-    hist_lo = min(0.0, float(terminal_net_worth.min()))
+    # Terminal-wealth histogram for the results chart. Clip both tails (1st/99th pct) into
+    # the end bins so outliers — including deep-debt ruin — don't squash the visible mass.
+    hist_lo = min(0.0, float(np.percentile(terminal_net_worth, 1)))
     hist_hi = float(np.percentile(terminal_net_worth, 99))
     if hist_hi <= hist_lo:  # degenerate (all equal) — nudge so histogram has width
         hist_hi = hist_lo + 1.0

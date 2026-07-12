@@ -109,12 +109,14 @@ def test_exhaustion_failure_detected():
     cfg = _flat_cfg(horizon_years=1)
     cfg.balances.totals[AssetClass.cash] = 15_000.0  # all taxable cash (see _flat_cfg)
     res = simulate(cfg)
-    # q0 funds 10k (5k left); q1 needs 10k, only 5k available -> fails from q1.
-    assert res.funded[0, 0]
-    assert not res.funded[0, 1:].any()
+    # Spending is never cut: q0 leaves 5k; from q1 the plan is funded by debt, so net
+    # worth goes negative (−5k, −15k, −25k) — ruin exposed, not floored.
+    np.testing.assert_allclose(res.net_worth[0], [5_000, -5_000, -15_000, -25_000])
+    np.testing.assert_allclose(res.spending_funded[0], [10_000, 10_000, 10_000, 10_000])
+    assert res.funded[0, 0]                 # solvent in q0
+    assert not res.funded[0, 1:].any()      # insolvent from q1
     assert res.first_failure_period[0] == 1
-    np.testing.assert_allclose(res.net_worth[0, 0], 5_000)
-    np.testing.assert_allclose(res.net_worth[0, 1:], 0.0)
+    assert res.min_net_worth[0] == -25_000  # depth of ruin (not a floored 0)
     assert _reconciles(res, 15_000)
 
 
@@ -150,6 +152,52 @@ def test_grossup_unfunded_when_portfolio_too_small():
     res = proportional_sale(B, np.zeros((1, 3)), np.array([10_000.0]), td_rate=0.2, gain_rate=0.15)
     assert not res.funded[0]
     assert np.isclose(res.gross[0], 5_000)  # sells everything it can
+
+
+# --------------------------------------------------- 1.9.0 order-of-operations behaviors
+def test_rmd_forces_tax_deferred_withdrawals():
+    """Past the RMD age, tax-deferred is drawn even when cash covers spending."""
+    cfg = RunConfig.default()
+    cfg.household.horizon_years = 2
+    for p in cfg.household.people:
+        p.current_age = 76           # already past rmd_start_age (75)
+        p.retirement_age = 76
+    with_rmd = simulate(cfg)
+    cfg_off = cfg.clone()
+    cfg_off.withdrawal_policy.rmd_enabled = False
+    without = simulate(cfg_off)
+    # The forced tax-deferred withdrawal shows up as extra sale/withdrawal tax.
+    assert with_rmd.tax_sale.sum() > without.tax_sale.sum() + 1.0
+    assert _reconciles(with_rmd, cfg.balances.total())
+    assert _reconciles(without, cfg.balances.total())
+
+
+def test_ordered_and_proportional_both_reconcile():
+    """Either liquidation strategy conserves the reconciliation identity."""
+    for kind in ("ordered", "proportional"):
+        cfg = RunConfig.default()
+        cfg.withdrawal_policy.kind = kind
+        cfg.spending.total_annual_real = 150_000  # force selling beyond cash/income
+        res = simulate(cfg)
+        assert _reconciles(res, cfg.balances.total())
+
+
+def test_income_is_end_of_period_not_available_same_quarter():
+    """Expense BOP / income EOP: q0 spending is funded from starting cash, not q0 income.
+
+    Cash-only 20k, spend 10k/q, and a large EOP pension: q0 must fund from the 20k cash
+    (pension arrives at end), so it succeeds; the pension then builds the buffer.
+    """
+    cfg = _flat_cfg(horizon_years=1)
+    cfg.balances.totals[AssetClass.cash] = 20_000.0
+    cfg.household.people[0].income_streams = [
+        IncomeStream(annual_real=40_000, start_age=0, inflation_linked=False,
+                     taxable_fraction=0.0)]  # 10k/quarter, arrives EOP
+    res = simulate(cfg)
+    # Every quarter funds: 10k spend from cash, +10k pension EOP -> net worth flat at 20k.
+    np.testing.assert_allclose(res.net_worth[0], [20_000, 20_000, 20_000, 20_000])
+    assert res.funded.all()
+    assert _reconciles(res, 20_000)
 
 
 # ----------------------------------------------------------------- outcome / success

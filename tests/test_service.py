@@ -71,8 +71,10 @@ def test_terminal_histogram_covers_all_scenarios():
 def test_real_below_nominal_when_inflation_positive():
     res = run_simulation(_cfg(300, 300))
     sm = res.summary
-    assert np.all(sm.net_worth_pctiles_real <= sm.net_worth_pctiles_nominal + 1e-9)
-    assert sm.terminal_pctiles_real[-1] < sm.terminal_pctiles_nominal[-1]
+    # Deflating shrinks magnitude (deflator >= 1) — real is closer to zero than nominal,
+    # for either sign (net worth can be negative once a plan is funded by debt).
+    assert np.all(np.abs(sm.net_worth_pctiles_real) <= np.abs(sm.net_worth_pctiles_nominal) + 1e-6)
+    assert sm.terminal_pctiles_real[-1] < sm.terminal_pctiles_nominal[-1]  # positive top tail
 
 
 def test_representative_paths_bounded():

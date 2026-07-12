@@ -173,7 +173,7 @@ def test_details_scenario_walk_overlay_and_tabs(client):
     # Overlay series present on the funnel, the walk grid, all three tabs, and the glossary.
     assert '"scenario"' in detail and "chart-funnel" in detail
     assert "Consolidated" in detail and "By account" in detail and "Order of returns" in detail
-    assert "Not yet implemented" in detail            # By account placeholder
+    assert "Tax-def RG" in detail                     # per-account walk columns rendered
     assert "chart-order" in detail                    # order histogram rendered
     assert "Glossary" in detail
     assert detail.index("window.fiscusChart =") < detail.index('fiscusChart("chart-funnel"')

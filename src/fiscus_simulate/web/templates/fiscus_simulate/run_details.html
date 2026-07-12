@@ -111,12 +111,13 @@
       {{ walk_table }}
     </div>
 
-    {# By account (not yet implemented) #}
+    {# By account: the same walk split across taxable / tax-deferred / tax-free / total #}
     <div class="tab-pane fade {{ 'show active' if tab == 'account' }}"
          id="tab-account" role="tabpanel">
-      <div class="alert alert-light border mb-0">Not yet implemented. The consolidated walk
-        sums over the taxable, tax-deferred and tax-free accounts; a per-account breakdown
-        is a future addition.</div>
+      <p class="text-muted small mb-2">Beginning balances (Stk/Bnd/Csh), investment income
+        (Inc), realized gains (RG, taxable only) and change in unrealized gains (ΔUnrl) by
+        account, per quarter. Wide — scroll or sort within the grid.</p>
+      {{ walk_by_account }}
     </div>
 
     {# Order-of-returns experiment #}
@@ -182,8 +183,18 @@ repeated). <em>Expense</em> = funded spending (below plan only when assets are e
 crystallized by sales; <em>Tax</em> = income tax + sale tax; <em>Δ Unrealized</em> = the
 period's capital return less the realized part (change in paper gains); <em>Total change</em>
 = End − BOP Total. The identity <code>Total change = Income + Savings − Expense − Tax +
-Realized G/L + Δ Unrealized</code> holds every row. <em>(V1 funding is income-first; the
-full BOP-expense / EOP-income actuarial timing arrives with the ordered-sales engine.)</em></p>
+Realized G/L + Δ Unrealized</code> holds every row. Timing is life-actuarial: spending is
+paid at the start of the quarter from cash; investment income, capital return and pensions
+land at the end; ordered sales (taxable → tax-deferred → tax-free) and RMDs settle there.</p>
+<p class="mb-1"><strong>By account.</strong> The same walk split across the taxable,
+tax-deferred and tax-free accounts (plus a Total): beginning Stocks/Bonds/Cash, investment
+Income, Realized gains (RG — only the taxable account crystallizes capital gains;
+tax-deferred is taxed as ordinary income on withdrawal) and the change in Unrealized gains
+(ΔUnrl).</p>
+<p class="mb-1"><strong>Spending is never cut.</strong> V1 keeps spending on the plan even
+once assets are exhausted — the shortfall is funded by debt (net worth goes <em>negative</em>),
+so ruin is exposed at its true depth rather than floored at zero. "Years funded" is the time
+until net worth first goes negative.</p>
 <p class="mb-1"><strong>Funnel overlay.</strong> The pink line is this scenario's own net
 worth by quarter, drawn over the population bands (p10–p90 outer, p30–p70 inner). It can
 wander outside the bands — a percentile band is a per-quarter cross-section, not any single

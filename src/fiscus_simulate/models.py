@@ -394,9 +394,32 @@ class TaxRates(_Model):
 
 # ------------------------------------------------------------------ policies / sim
 class WithdrawalPolicy(_Model):
-    """V1: proportional withdrawal across all account/asset cells. Slot for V2 ordering."""
+    """How assets are liquidated to fund a shortfall, plus RMD settings.
 
-    kind: str = "proportional"
+    ``kind`` selects the sale strategy: ``"proportional"`` (across all account/asset cells
+    at once) or ``"ordered"`` (drain accounts in ``order``, tax-efficient). ``order`` is the
+    account draw-down priority for the ordered strategy. RMDs force a minimum tax-deferred
+    withdrawal once the eldest person reaches ``rmd_start_age`` (see :mod:`.rmd`).
+
+    Notes
+    -----
+    The ordered strategy and RMDs are consumed by the re-timed engine (1.9.0 integration);
+    the field defaults describe the intended behavior.
+    """
+
+    kind: str = "ordered"  # "ordered" (taxable→tax-deferred→tax-free) | "proportional"
+    order: list[AccountType] = Field(default_factory=lambda: list(ACCOUNT_TYPES))
+    rmd_enabled: bool = True
+    rmd_start_age: float = Field(default=75, ge=0, le=120)
+
+    @field_validator("order")
+    @classmethod
+    def _order_is_permutation(cls, v: list[AccountType]) -> list[AccountType]:
+        if set(v) != set(ACCOUNT_TYPES) or len(v) != len(ACCOUNT_TYPES):
+            raise ValueError(
+                f"withdrawal order must be a permutation of {[a.value for a in ACCOUNT_TYPES]}"
+            )
+        return v
 
 
 class RebalancingPolicy(_Model):

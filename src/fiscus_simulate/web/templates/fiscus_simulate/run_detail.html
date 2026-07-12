@@ -117,8 +117,9 @@ phase; the drawdown begins at retirement. <em>Real</em> divides each quarter by 
 inflation deflator (1+π)<sup>t</sup>. Bands are per-quantile across scenarios — a single
 household follows one path *inside* the funnel, not a band.</p>
 <p class="mb-1"><strong>Terminal-wealth distribution.</strong> Histogram of ending net
-worth across scenarios (40 bins). The top ~1% is clipped into the last bin so outliers
-don't squash the visible mass. <strong>Failure timing</strong> counts the scenarios whose
+worth across scenarios (40 bins). The top and bottom ~1% are clipped into the end bins so
+outliers — including deep-debt ruin — don't squash the visible mass. Terminal net worth can
+be negative: V1 keeps spending on plan and funds any shortfall by debt. <strong>Failure timing</strong> counts the scenarios whose
 *first* shortfall lands in each year — the shape of *when* plans break (the seam a future
 mortality weighting reweights by survival).</p>
 <p class="mb-1"><strong>Success criteria</strong> (all coincide in V1, diverge in V2):

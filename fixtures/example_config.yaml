@@ -87,7 +87,13 @@ tax_rates:
   realized_gain: 0.15
   other_pension: 0.2
 withdrawal_policy:
-  kind: proportional
+  kind: ordered
+  order:
+  - taxable
+  - tax_deferred
+  - tax_free
+  rmd_enabled: true
+  rmd_start_age: 75.0
 rebalancing_policy:
   kind: none
 simulation:

@@ -13,9 +13,9 @@ from time import perf_counter
 import numpy as np
 
 from .analysis.summary import SimulationSummary, summarize
-from .assets import BONDS, CASH, STOCKS
+from .assets import BONDS, CASH, STOCKS, TAXABLE
 from .engine import simulate
-from .models import RunConfig
+from .models import ACCOUNT_TYPES, RunConfig
 from .returns.base import ReturnGenerator, ReturnsBundle
 from .returns.deterministic import DeterministicReturns
 from .returns.gbm import GBMReturns
@@ -48,7 +48,10 @@ class ScenarioWalk:
     net_worth: np.ndarray                  # (T,) end-of-period net worth, for the overlay
     terminal_net_worth: float
     first_failure_period: int              # -1 if never failed
-    columns: dict[str, np.ndarray]         # per-period (T,) walk arrays, keyed by column
+    columns: dict[str, np.ndarray]         # per-period (T,) consolidated walk arrays
+    # Per-account (taxable / tax_deferred / tax_free) detail: account value -> {stocks,
+    # bonds, cash, income, realized, unrealized} each (T,). For the "By account" walk.
+    account_columns: dict[str, dict[str, np.ndarray]]
     bundle: ReturnsBundle                  # the 1-scenario returns, reused by the Order tab
 
 
@@ -274,12 +277,31 @@ def replay_scenario(config: RunConfig, index: int,
         "unrealized": res.capital_return[0] - realized,
         "end": res.net_worth[0],
     }
+
+    # Per-account detail (realized gains arise only in the taxable account).
+    acct = res.balances_begin_acct[0]      # (T, n_acct, n_asset)
+    inc_acct = res.income_acct[0]          # (T, n_acct)
+    cap_acct = res.capital_acct[0]         # (T, n_acct)
+    zero = np.zeros_like(realized)
+    account_columns: dict[str, dict[str, np.ndarray]] = {}
+    for ai, a in enumerate(ACCOUNT_TYPES):
+        realized_a = realized if ai == TAXABLE else zero
+        account_columns[a.value] = {
+            "stocks": acct[:, ai, STOCKS],
+            "bonds": acct[:, ai, BONDS],
+            "cash": acct[:, ai, CASH],
+            "income": inc_acct[:, ai],
+            "realized": realized_a,
+            "unrealized": cap_acct[:, ai] - realized_a,
+        }
+
     return ScenarioWalk(
         index=index,
         net_worth=res.net_worth[0],
         terminal_net_worth=float(res.terminal_net_worth[0]),
         first_failure_period=int(res.first_failure_period[0]),
         columns=columns,
+        account_columns=account_columns,
         bundle=target,
     )
 
