@@ -47,7 +47,7 @@ def test_yaml_is_human_readable_strings():
 
 def test_canonical_orders_complete():
     assert [c.value for c in SPENDING_CATEGORIES] == [
-        "housing", "core", "non_core", "travel", "medical", "tax"]
+        "housing", "core", "non_core", "travel", "medical"]
     assert [a.value for a in ASSET_CLASSES] == ["stocks", "bonds", "cash"]
     assert [a.value for a in ACCOUNT_TYPES] == ["taxable", "tax_deferred", "tax_free"]
 
@@ -99,10 +99,11 @@ def test_income_streams_nest_under_people():
     # Streams live on the person now — no separate top-level list / owner key.
     assert not hasattr(cfg, "income_streams")
     assert cfg.household.people[0].name == "A"
-    assert cfg.household.people[0].income_streams[0].annual_real == 11_000
+    assert cfg.household.people[0].income_streams[0].annual_real == 40_000  # A's Social Security
+    assert cfg.household.people[1].income_streams == []                     # B has none
     # Round-trips with the nesting intact.
     again = from_yaml_str(to_yaml_str(cfg))
-    assert again.household.people[1].income_streams[0].annual_real == 9_000
+    assert again.household.people[0].income_streams[0].label == "Social Security"
 
 
 def test_person_may_have_no_income_streams():

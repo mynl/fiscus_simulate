@@ -38,7 +38,6 @@ class SpendingCategory(str, Enum):
     non_core = "non_core"
     travel = "travel"
     medical = "medical"
-    tax = "tax"
 
 
 class AssetClass(str, Enum):
@@ -446,26 +445,29 @@ class RunConfig(_Model):
         """
         return cls(
             household=Household(
+                # A retired two-person household. Both retired at 62 (spending starts at
+                # period 0, no accumulation); A has Social Security starting at 67, B none.
                 people=[
-                    Person(name="A", current_age=60, retirement_age=67,
-                           annual_real_savings=30_000, income_streams=[
-                               IncomeStream(label="pension", annual_real=11_000, start_age=67)]),
-                    Person(name="B", current_age=58, retirement_age=67,
-                           annual_real_savings=25_000, income_streams=[
-                               IncomeStream(label="pension", annual_real=9_000, start_age=67)]),
+                    Person(name="A", current_age=62, retirement_age=62,
+                           annual_real_savings=0, income_streams=[
+                               IncomeStream(label="Social Security", annual_real=40_000,
+                                            start_age=67)]),
+                    Person(name="B", current_age=62, retirement_age=62,
+                           annual_real_savings=0, income_streams=[]),
                 ],
                 start_date=date(2026, 3, 31),
                 horizon_years=40,
             ),
             spending=SpendingPlan(
                 total_annual_real=60_000,
+                # Tax is computed from income and gains (not a budget line), so no "tax"
+                # category. The remaining five sum to 100.
                 category_pct={
-                    SpendingCategory.housing: 30,
-                    SpendingCategory.core: 30,
-                    SpendingCategory.non_core: 15,
+                    SpendingCategory.housing: 32,
+                    SpendingCategory.core: 32,
+                    SpendingCategory.non_core: 16,
                     SpendingCategory.travel: 10,
                     SpendingCategory.medical: 10,
-                    SpendingCategory.tax: 5,
                 },
             ),
             inflation=InflationAssumptions(
@@ -476,7 +478,6 @@ class RunConfig(_Model):
                     SpendingCategory.non_core: 0.0,
                     SpendingCategory.travel: 0.0,
                     SpendingCategory.medical: 0.02,
-                    SpendingCategory.tax: 0.0,
                 },
             ),
             balances=AccountBalances(
@@ -508,3 +509,27 @@ class RunConfig(_Model):
                 realized_gain=0.15, other_pension=0.20,
             ),
         )
+
+    @classmethod
+    def generic(cls) -> RunConfig:
+        """A fully-populated *accumulation-phase* demo (still saving toward retirement).
+
+        Every optional field is exercised: two working people with savings rates and
+        pensions, so the editor and the retirement projection have something to show for
+        someone who is not yet retired. Synthetic figures — not advice, not real data.
+        """
+        cfg = cls.default()
+        cfg.household.people = [
+            Person(name="A", current_age=45, retirement_age=67, annual_real_savings=30_000,
+                   income_streams=[IncomeStream(label="Social Security", annual_real=30_000,
+                                                start_age=67)]),
+            Person(name="B", current_age=43, retirement_age=65, annual_real_savings=25_000,
+                   income_streams=[
+                       IncomeStream(label="Social Security", annual_real=22_000, start_age=67),
+                       IncomeStream(label="employer pension", annual_real=12_000, start_age=65,
+                                    inflation_linked=False)]),
+        ]
+        # A smaller portfolio mid-accumulation (composition unchanged).
+        cfg.balances.totals = {AssetClass.stocks: 340_000, AssetClass.bonds: 120_000,
+                               AssetClass.cash: 40_000}
+        return cfg

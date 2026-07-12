@@ -50,8 +50,15 @@ def test_name_is_slugified(client, tmp_path):
 def test_editor_shows_preview(client):
     client.post("/config", data={"name": "prev", "yaml": _small_config_yaml()})
     body = client.get("/config/prev").get_data(as_text=True)
-    assert "Preview" in body and "Household wealth" in body
-    assert "1,250,000" in body  # wealth total from the default balances
+    assert "Preview" in body and "After-tax income" in body  # the account x asset matrix
+    assert "1,250,000" in body  # Total-row balance from the default balances
+
+
+def test_generic_template_seeds_accumulation(client):
+    """The 'generic demo' preset seeds a still-saving household with a retirement panel."""
+    body = client.get("/config/new?template=generic").get_data(as_text=True)
+    assert "At" in body and "retirement" in body  # projection row shows (years_to_ret > 0)
+    assert "annual_real_savings: 30000" in body   # generic A saves
 
 
 def test_rename_on_save_creates_new_scenario(client, tmp_path):

@@ -29,31 +29,45 @@
     <div class="card-header bg-primary-subtle py-2 small fw-semibold">
       <i class="bi bi-clipboard-data me-1"></i>Preview — a plausibility check (no simulation run)</div>
     <div class="card-body py-3">
-      <div class="row g-3 text-center small">
-        <div class="col-6 col-md-3">
-          <div class="text-muted">Household wealth</div>
-          <div class="fs-5 fw-semibold">{{ "{:,.0f}".format(p.wealth_total) }}</div>
-          <div class="text-muted" style="font-size:.75rem;">
-            {% for acct, v in p.wealth_by_account.items() %}{{ acct }} {{ "{:,.0f}".format(v) }}{% if not loop.last %} &middot; {% endif %}{% endfor %}</div>
-        </div>
-        <div class="col-6 col-md-3">
-          <div class="text-muted">Portfolio income / yr</div>
-          <div class="fs-5 fw-semibold">{{ "{:,.0f}".format(p.portfolio_income_annual) }}</div>
-          <div class="text-muted" style="font-size:.75rem;">est. tax now {{ "{:,.0f}".format(p.portfolio_income_tax_annual) }}</div>
-        </div>
-        <div class="col-6 col-md-3">
-          <div class="text-muted">Pension income / yr</div>
-          <div class="fs-5 fw-semibold">{{ "{:,.0f}".format(p.pension_income_total_annual) }}</div>
-          <div class="text-muted" style="font-size:.75rem;">
-            {% if p.external_income_now_annual %}{{ "{:,.0f}".format(p.external_income_now_annual) }} active now{% elif p.years_to_first_pension is not none %}starts in {{ "%.0f"|format(p.years_to_first_pension) }} yr{% else %}none{% endif %}</div>
-        </div>
-        <div class="col-6 col-md-3">
-          <div class="text-muted">Planned spending / yr</div>
-          <div class="fs-5 fw-semibold">{{ "{:,.0f}".format(p.planned_spending_annual) }}</div>
-          <div class="text-muted" style="font-size:.75rem;">
-            withdrawal {{ "%.1f%%"|format(100 * p.gross_withdrawal_rate) }} gross
-            &middot; {{ "%.1f%%"|format(100 * p.net_withdrawal_rate) }} net now</div>
-        </div>
+      <div class="table-responsive">
+        <table class="table table-sm small mb-2 align-middle">
+          <thead>
+            <tr class="text-muted">
+              <th>Account</th>
+              <th class="text-end">Stocks</th><th class="text-end">Bonds</th><th class="text-end">Cash</th>
+              <th class="text-end">Balance</th>
+              <th class="text-end">Expected income</th><th class="text-end">Total income</th>
+              <th class="text-end">After-tax income</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in p.account_matrix %}
+              <tr class="{{ 'fw-semibold border-top' if row.account == 'Total' }}">
+                <td>{{ row.account|replace('_', '-') }}</td>
+                <td class="text-end">{{ "{:,.0f}".format(row.stocks) }}</td>
+                <td class="text-end">{{ "{:,.0f}".format(row.bonds) }}</td>
+                <td class="text-end">{{ "{:,.0f}".format(row.cash) }}</td>
+                <td class="text-end">{{ "{:,.0f}".format(row.balance_total) }}</td>
+                <td class="text-end">{{ "{:,.0f}".format(row.expected_income) }}</td>
+                <td class="text-end">{{ "{:,.0f}".format(row.total_income) }}</td>
+                <td class="text-end">{{ "{:,.0f}".format(row.after_tax_income) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="row g-2 text-center small text-muted">
+        <div class="col-6 col-md-3">Planned spending / yr
+          <div class="fw-semibold text-body">{{ "{:,.0f}".format(p.planned_spending_annual) }}</div></div>
+        <div class="col-6 col-md-3">Withdrawal (gross / net now)
+          <div class="fw-semibold text-body">{{ "%.1f%%"|format(100 * p.gross_withdrawal_rate) }}
+            / {{ "%.1f%%"|format(100 * p.net_withdrawal_rate) }}</div></div>
+        <div class="col-6 col-md-3">Pension income / yr
+          <div class="fw-semibold text-body">{{ "{:,.0f}".format(p.pension_income_total_annual) }}</div>
+          <div style="font-size:.75rem;">
+            {% if p.external_income_now_annual %}{{ "{:,.0f}".format(p.external_income_now_annual) }} active now{% elif p.years_to_first_pension is not none %}starts in {{ "%.0f"|format(p.years_to_first_pension) }} yr{% else %}none{% endif %}</div></div>
+        <div class="col-6 col-md-3">Est. tax on income now
+          <div class="fw-semibold text-body">{{ "{:,.0f}".format(p.portfolio_income_tax_annual) }}</div></div>
       </div>
 
       {% if p.years_to_retirement > 0 %}
@@ -130,13 +144,16 @@
 
 {% block glossary %}
 {% if preview %}
-<p class="mb-1"><strong>Household wealth</strong> = sum of the asset-class
-<code>totals</code> (dollars). Each account's holding = total × its proportion (fractions
-0–1); the taxable account is the remainder. <strong>Portfolio income / yr</strong> =
-Σ (balance × annual income yield)
-across every account (gross, before tax). <strong>Est. tax now</strong> applies the
-taxable account's rates only: dividend rate × taxable-stock income + interest rate ×
-taxable bond/cash income (tax-deferred and tax-free income is untaxed on accrual).</p>
+<p class="mb-1"><strong>Balance matrix</strong> (year 1, rows by account). Each account's
+holding = the asset-class <code>total</code> × its proportion (fractions 0–1); the taxable
+account is the remainder. <strong>Expected income</strong> = Σ (balance × annual income
+yield) for that account (gross investment income). <strong>Total income</strong> adds
+active pensions — only on the <em>Total</em> row (pensions aren't attributed to an
+account). <strong>After-tax income</strong> nets each row by its tax treatment: taxable
+less dividend/interest tax; tax-deferred × (1 − withdrawal rate) as a spendable proxy (it
+is only taxed when withdrawn); tax-free untaxed; the Total row also nets pensions by
+<code>other_pension × taxable_fraction</code>. <strong>Est. tax on income now</strong> is
+the taxable account's dividend/interest tax at t=0.</p>
 <p class="mb-1"><strong>Pension income / yr</strong> sums every person's income streams
 at their real amounts; <em>active now</em> counts only streams whose owner has already
 reached <code>start_age</code>; <em>starts in N yr</em> is the wait to the earliest

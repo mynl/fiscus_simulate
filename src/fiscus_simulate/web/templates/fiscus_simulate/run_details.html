@@ -104,8 +104,10 @@
     <div class="tab-pane fade {{ 'show active' if tab != 'account' and tab != 'order' }}"
          id="tab-consolidated" role="tabpanel">
       <p class="text-muted small mb-2">Quarter-by-quarter walk, consolidated over accounts.
-        Each row balances: <code>End = Begin + Ext income + Invest income + Savings +
-        Capital G/L − Spending − Tax</code>. Stocks/Bonds/Cash are the ending composition.</p>
+        BOP balances (beginning of period, by asset) then the flows. Each row balances:
+        <code>Total change = Income + Savings − Expense − Tax + Realized G/L + Δ Unrealized</code>
+        and <code>End = BOP Total + Total change</code>. Capital return is split into the
+        part crystallized by sales (Realized G/L) and the remainder (Δ Unrealized).</p>
       {{ walk_table }}
     </div>
 
@@ -172,14 +174,16 @@ cube; the chosen scenario is regenerated <em>bit-for-bit</em> from the run's sto
 (the return draw is sequential, so scenario <em>i</em> is the <em>i</em>-th block of
 draws). The engine reruns for that lone path, recording balances every quarter.</p>
 <p class="mb-1"><strong>Consolidated walk.</strong> Per quarter, summed over the taxable,
-tax-deferred and tax-free accounts: <em>Begin</em> = start-of-quarter net worth;
-<em>Ext income</em> = pensions/other external income; <em>Invest income</em> = dividends
-&amp; interest on beginning balances; <em>Savings</em> = pre-retirement contributions;
-<em>Capital G/L</em> = capital return applied to end-of-quarter balances; <em>Spending</em>
-= funded spending (below plan only when assets are exhausted); <em>Tax</em> = income tax +
-sale tax; <em>End</em> = end-of-quarter net worth. The identity <code>End = Begin + Ext
-income + Invest income + Savings + Capital G/L − Spending − Tax</code> holds every row.
-Stocks/Bonds/Cash are ending balances by asset class.</p>
+tax-deferred and tax-free accounts. <em>BOP Stocks/Bonds/Cash/Total</em> = beginning-of-
+period balances by asset (the ending equals the next row's beginning, so it is not
+repeated). <em>Expense</em> = funded spending (below plan only when assets are exhausted);
+<em>Income</em> = pensions/other external income + dividends &amp; interest;
+<em>Savings</em> = pre-retirement contributions; <em>Realized G/L</em> = capital gains
+crystallized by sales; <em>Tax</em> = income tax + sale tax; <em>Δ Unrealized</em> = the
+period's capital return less the realized part (change in paper gains); <em>Total change</em>
+= End − BOP Total. The identity <code>Total change = Income + Savings − Expense − Tax +
+Realized G/L + Δ Unrealized</code> holds every row. <em>(V1 funding is income-first; the
+full BOP-expense / EOP-income actuarial timing arrives with the ordered-sales engine.)</em></p>
 <p class="mb-1"><strong>Funnel overlay.</strong> The pink line is this scenario's own net
 worth by quarter, drawn over the population bands (p10–p90 outer, p30–p70 inner). It can
 wander outside the bands — a percentile band is a per-quarter cross-section, not any single

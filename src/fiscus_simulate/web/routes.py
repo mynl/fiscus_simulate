@@ -61,8 +61,13 @@ def dashboard():
 # ------------------------------------------------------------------------ config editor
 @bp.route("/config/new")
 def config_new():
-    """Open the editor seeded from the illustrative default configuration."""
-    cfg = RunConfig.default()
+    """Open the editor seeded from a starter configuration.
+
+    ``?template=generic`` seeds a fully-populated accumulation-phase demo (still saving);
+    anything else seeds the retired two-person default.
+    """
+    cfg = RunConfig.generic() if request.args.get("template") == "generic" \
+        else RunConfig.default()
     return render_template(
         "fiscus_simulate/config_edit.html",
         state=_state(),
@@ -500,24 +505,27 @@ def _picker_row(i: int, terminal, first_fail, horizon: int) -> dict:
 def _walk_frame(walk, labels: list[str]) -> pd.DataFrame:
     """The consolidated quarter-by-quarter walk table (money rounded to whole dollars).
 
-    Columns follow the reconciliation identity so the row visibly balances:
-    ``End = Begin + Ext income + Invest income + Savings + Capital G/L − Spending − Tax``;
-    Stocks/Bonds/Cash are the ending composition (consolidated over accounts).
+    Beginning balances by asset (ending = next period's beginning, so not repeated), then
+    the flows. Reconciles: ``Total change = Income + Savings − Expense − Tax + Realized
+    G/L + Δ Unrealized`` and ``End = Begin + Total change``. Capital return is split into
+    the realized part (crystallized by sales) and the change in unrealized (the remainder).
     """
     c = walk.columns
+    income = c["ext_income"] + c["invest_income"]
+    total_change = c["end"] - c["begin"]
     df = pd.DataFrame({
         "Period": labels,
-        "Begin": c["begin"],
-        "Ext income": c["ext_income"],
-        "Invest income": c["invest_income"],
+        "BOP Stocks": c["stocks"],
+        "BOP Bonds": c["bonds"],
+        "BOP Cash": c["cash"],
+        "BOP Total": c["begin"],
+        "Expense": c["spending"],
+        "Income": income,
         "Savings": c["savings"],
-        "Capital G/L": c["capital"],
-        "Spending": c["spending"],
+        "Realized G/L": c["realized"],
         "Tax": c["tax"],
-        "End": c["end"],
-        "Stocks": c["stocks"],
-        "Bonds": c["bonds"],
-        "Cash": c["cash"],
+        "Δ Unrealized": c["unrealized"],
+        "Total change": total_change,
     })
     money = [col for col in df.columns if col != "Period"]
     df[money] = df[money].round(0).astype("int64")

@@ -2,39 +2,32 @@ schema_version: '1.3'
 household:
   people:
   - name: A
-    current_age: 60.0
-    retirement_age: 67.0
-    annual_real_savings: 30000.0
+    current_age: 62.0
+    retirement_age: 62.0
+    annual_real_savings: 0.0
     income_streams:
-    - label: pension
-      annual_real: 11000.0
+    - label: Social Security
+      annual_real: 40000.0
       start_age: 67.0
       end_age: null
       inflation_linked: true
       taxable_fraction: 1.0
   - name: B
-    current_age: 58.0
-    retirement_age: 67.0
-    annual_real_savings: 25000.0
-    income_streams:
-    - label: pension
-      annual_real: 9000.0
-      start_age: 67.0
-      end_age: null
-      inflation_linked: true
-      taxable_fraction: 1.0
+    current_age: 62.0
+    retirement_age: 62.0
+    annual_real_savings: 0.0
+    income_streams: []
   start_date: '2026-03-31'
   horizon_years: 40
   quarter_convention: calendar_qend
 spending:
   total_annual_real: 60000.0
   category_pct:
-    housing: 30.0
-    core: 30.0
-    non_core: 15.0
+    housing: 32.0
+    core: 32.0
+    non_core: 16.0
     travel: 10.0
     medical: 10.0
-    tax: 5.0
   mode: planned
 inflation:
   overall_mean: 0.025
@@ -45,7 +38,6 @@ inflation:
     non_core: 0.0
     travel: 0.0
     medical: 0.02
-    tax: 0.0
   category_excess_vol: null
 balances:
   totals:

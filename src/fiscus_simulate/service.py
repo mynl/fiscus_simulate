@@ -256,20 +256,23 @@ def replay_scenario(config: RunConfig, index: int,
         raise RuntimeError(f"generator did not yield scenario {index}")
 
     res = simulate(config, returns=target, capture_balances=True)
-    begin = res.balances_begin[0]          # (T, n_asset)
-    end = res.balances_end[0]              # (T, n_asset)
+    begin = res.balances_begin[0]          # (T, n_asset), beginning-of-period by asset
+    realized = res.realized_gain[0]
     columns = {
         "begin": begin.sum(axis=1),
+        "stocks": begin[:, STOCKS],        # beginning composition (ending = next begin)
+        "bonds": begin[:, BONDS],
+        "cash": begin[:, CASH],
         "ext_income": res.external_income,
         "invest_income": res.investment_income[0],
         "savings": res.savings,
-        "capital": res.capital_return[0],
         "spending": res.spending_funded[0],
         "tax": res.tax_income[0] + res.tax_sale[0],
+        "realized": realized,
+        # Of the period's capital return, the part crystallized by sales is "realized";
+        # the remainder is the change in unrealized gains (reconciles exactly).
+        "unrealized": res.capital_return[0] - realized,
         "end": res.net_worth[0],
-        "stocks": end[:, STOCKS],
-        "bonds": end[:, BONDS],
-        "cash": end[:, CASH],
     }
     return ScenarioWalk(
         index=index,

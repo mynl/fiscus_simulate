@@ -3,6 +3,42 @@
 All notable changes to `fiscus_simulate`. Semantic versioning from 1.0.0; each build
 stage bumps the minor. Newest first.
 
+## 1.8.0 — 2026-07-11
+
+Retired-household default, computed-tax framing, and a richer config preview + walk.
+(First of two stages; the ordered-sales/RMD engine and the actuarial by-account walk
+land in 1.9.0.)
+
+### Changed
+- **Default household is now retired.** Two people both 62 and retired at 62 (spending
+  from period 0, no accumulation); person A has Social Security of 40,000 real starting
+  at 67, person B has no income streams. Income streams were always optional — this just
+  reflects it in the default. Added `RunConfig.generic()`, a fully-populated
+  accumulation-phase preset (still-saving household) for demos.
+- **Removed the `tax` *spending* category.** Tax is computed from income and gains, not a
+  budget line. `SpendingCategory` now has five members (housing/core/non_core/travel/
+  medical); the default mix re-balances to 100. The engine's computed **Tax** and
+  `TaxRates` are unrelated and unchanged.
+- **New-config preview is an account × asset matrix** — rows taxable / tax-deferred /
+  tax-free / Total; columns Stocks / Bonds / Cash balances, Expected income, Total income
+  (adds active pensions on the Total row), and After-tax income (netted by each account's
+  tax treatment). Planned spending, withdrawal rates and pension timing move to a compact
+  strip below; the at-retirement projection is unchanged (hidden for the retired default).
+- **Scenario walk redesigned** — beginning-of-period balances by asset (ending omitted; it
+  equals the next row's beginning), and the capital return split into **Realized G/L**
+  (crystallized by sales) and **Δ Unrealized** (`capital_return − realized_gain`, reconciles
+  exactly). Columns: BOP Stocks/Bonds/Cash/Total, Expense, Income, Savings, Realized G/L,
+  Tax, Δ Unrealized, Total change.
+
+### Web
+- Dashboard gains a "New (generic demo)" button (`/config/new?template=generic`).
+
+### Tests
+- Preview literals updated for the retired default (pensions 40k, retired ⇒ no
+  accumulation projection); a new account-matrix reconciliation test and generic-preset
+  route test; category-list and income-stream-nesting tests updated. 91 green.
+  `fixtures/example_config.yaml` regenerated.
+
 ## 1.7.0 — 2026-07-11
 
 Stage 8 — "see inside the simulations": a per-scenario **Details** view with a

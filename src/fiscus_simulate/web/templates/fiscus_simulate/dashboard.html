@@ -12,7 +12,10 @@
 {% block content %}
 <div class="d-flex align-items-center mb-3">
   <h1 class="h3 mb-0">Simulation dashboard</h1>
-  <a class="btn btn-primary ms-auto" href="{{ url_for('simulate.config_new') }}">
+  <a class="btn btn-outline-primary ms-auto" href="{{ url_for('simulate.config_new', template='generic') }}"
+     title="A fully-populated accumulation-phase demo (still saving)">
+    <i class="bi bi-mortarboard"></i> New (generic demo)</a>
+  <a class="btn btn-primary ms-2" href="{{ url_for('simulate.config_new') }}">
     <i class="bi bi-plus-lg"></i> New configuration</a>
 </div>
 

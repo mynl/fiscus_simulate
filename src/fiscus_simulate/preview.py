@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .models import (
+    ACCOUNT_TYPES,
     ASSET_CLASSES,
     AccountType,
     AssetClass,
@@ -34,6 +35,10 @@ class ConfigPreview:
     wealth_total: float
     wealth_by_account: dict[str, float]
     wealth_by_asset: dict[str, float]
+    # Account x asset matrix (rows: taxable / tax_deferred / tax_free / Total). Each row is
+    # a dict: account, stocks, bonds, cash, balance_total, expected_income (gross yr-1
+    # investment income), total_income (+ active pensions in the Total row), after_tax_income.
+    account_matrix: list[dict]
     portfolio_income_annual: float          # gross investment income, all accounts
     portfolio_income_tax_annual: float      # taxable-account accrual tax at t=0
     external_income_now_annual: float       # streams already active at t=0
@@ -73,6 +78,7 @@ def config_preview(cfg: RunConfig) -> ConfigPreview:
 
     # External income: active-now vs total, and time to the first not-yet-started stream.
     external_now = 0.0
+    external_now_tax = 0.0
     pension_total = 0.0
     waits: list[float] = []
     for person in cfg.household.people:
@@ -83,9 +89,14 @@ def config_preview(cfg: RunConfig) -> ConfigPreview:
             )
             if active_now:
                 external_now += s.annual_real
+                external_now_tax += s.annual_real * s.taxable_fraction * rates.other_pension
             elif person.current_age < s.start_age:
                 waits.append(s.start_age - person.current_age)
     years_to_first = min(waits) if waits else None
+
+    # Account x asset matrix (year 1). Per-account gross investment income and the
+    # after-tax "spendable" version by tax treatment; the Total row also folds in pensions.
+    matrix = _account_matrix(cfg, external_now, external_now_tax)
 
     spending = cfg.spending.total_annual_real
     gross_rate = spending / wealth if wealth > 0 else 0.0
@@ -132,6 +143,7 @@ def config_preview(cfg: RunConfig) -> ConfigPreview:
         wealth_total=wealth,
         wealth_by_account={k.value: v for k, v in bal.by_account().items()},
         wealth_by_asset={k.value: v for k, v in by_asset.items()},
+        account_matrix=matrix,
         portfolio_income_annual=portfolio_income,
         portfolio_income_tax_annual=income_tax_now,
         external_income_now_annual=external_now,
@@ -147,3 +159,66 @@ def config_preview(cfg: RunConfig) -> ConfigPreview:
         retirement_withdrawal_rate=ret_wd_rate,
         retirement_income_coverage=ret_coverage,
     )
+
+
+def _account_matrix(cfg: RunConfig, external_now: float, external_now_tax: float) -> list[dict]:
+    """Build the account x asset preview matrix (year 1).
+
+    One row per account (taxable / tax_deferred / tax_free) plus a Total row. For each row:
+    stock/bond/cash balances, gross year-1 investment income (``expected_income``), the
+    same plus active pensions (``total_income`` — pensions only attach to the Total row),
+    and after-tax income by the row's tax treatment (``after_tax_income``).
+
+    Notes
+    -----
+    After-tax convention: taxable income is net of dividend/interest tax; tax-deferred is
+    scaled by ``(1 - tax_deferred_withdrawal)`` as a "spendable" proxy (it is only taxed on
+    withdrawal); tax-free is untaxed. The Total row adds pensions net of
+    ``other_pension * taxable_fraction``.
+    """
+    amounts = cfg.balances.amounts()
+    yields = cfg.return_generator.income_yield
+    rates = cfg.tax_rates
+
+    def _after_tax(acct: AccountType, per_asset: dict[AssetClass, float]) -> float:
+        inc = {a: per_asset[a] * yields[a] for a in ASSET_CLASSES}
+        if acct == AccountType.taxable:
+            tax = (rates.dividend * inc[AssetClass.stocks]
+                   + rates.interest * (inc[AssetClass.bonds] + inc[AssetClass.cash]))
+            return sum(inc.values()) - tax
+        if acct == AccountType.tax_deferred:
+            return sum(inc.values()) * (1.0 - rates.tax_deferred_withdrawal)
+        return sum(inc.values())  # tax_free
+
+    rows: list[dict] = []
+    totals = {a: 0.0 for a in ASSET_CLASSES}
+    gross_total = at_total = 0.0
+    for acct in ACCOUNT_TYPES:
+        per_asset = amounts[acct]
+        gross = sum(per_asset[a] * yields[a] for a in ASSET_CLASSES)
+        at = _after_tax(acct, per_asset)
+        gross_total += gross
+        at_total += at
+        for a in ASSET_CLASSES:
+            totals[a] += per_asset[a]
+        rows.append({
+            "account": acct.value,
+            "stocks": per_asset[AssetClass.stocks],
+            "bonds": per_asset[AssetClass.bonds],
+            "cash": per_asset[AssetClass.cash],
+            "balance_total": sum(per_asset.values()),
+            "expected_income": gross,
+            "total_income": gross,          # pensions attach only to the Total row
+            "after_tax_income": at,
+        })
+    rows.append({
+        "account": "Total",
+        "stocks": totals[AssetClass.stocks],
+        "bonds": totals[AssetClass.bonds],
+        "cash": totals[AssetClass.cash],
+        "balance_total": sum(totals.values()),
+        "expected_income": gross_total,
+        "total_income": gross_total + external_now,
+        "after_tax_income": at_total + (external_now - external_now_tax),
+    })
+    return rows
