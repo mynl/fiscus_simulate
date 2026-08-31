@@ -21,16 +21,11 @@ the deterministic quarterly engine is Stage 2. Changelog: `CHANGELOG.md`.
 
 ## Setup
 
-Windows dev keeps the virtualenv off the NAS-synced tree by putting it on the local
-dev drive `V:\dev` via a junction:
+A normal in-checkout `.venv` on every machine:
 
 ```powershell
-New-Item -ItemType Directory -Force V:\dev\venvs\fiscus_simulate | Out-Null
-New-Item -ItemType Junction -Path .venv -Target V:\dev\venvs\fiscus_simulate  # before first sync
 uv sync --extra dev
 ```
-
-On the Linux VPS just use a normal `.venv` (`uv sync --extra dev`).
 
 ```sh
 uv run pytest            # run the test suite
