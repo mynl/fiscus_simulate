@@ -3,6 +3,12 @@
 All notable changes to `fiscus_simulate`. Semantic versioning from 1.0.0; each build
 stage bumps the minor. Newest first.
 
+## 1.9.1 — 2026-08-31
+
+App home is `~/.fiscus/simulate/` (was `~/.fiscus_simulate`); `$FISCUS_SIMULATE_HOME` still
+overrides. On DOOB `configs/` is a junction into `~/.fiscus/settings/simulate` (authored
+scenarios, backed up); the code treats it as a plain directory.
+
 ## 1.9.0 — 2026-07-12
 
 Computed-tax sales engine (ordered draw-down + RMDs), life-actuarial order of operations,

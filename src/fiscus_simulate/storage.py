@@ -32,9 +32,9 @@ _PINNED_MARKER = "PINNED"
 
 
 def default_runs_dir() -> Path:
-    """App-state run directory (`$FISCUS_SIMULATE_HOME` or `~/.fiscus_simulate`)."""
+    """App-state run directory (`$FISCUS_SIMULATE_HOME` or `~/.fiscus/simulate`)."""
     home = os.environ.get("FISCUS_SIMULATE_HOME")
-    base = Path(home) if home else Path.home() / ".fiscus_simulate"
+    base = Path(home) if home else Path.home() / ".fiscus" / "simulate"
     return base / "simulation_runs"
 
 

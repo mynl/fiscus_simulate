@@ -1,6 +1,6 @@
 """Application state: version and lazily-created app-state directories.
 
-App state (configs, run directories) lives under ``~/.fiscus_simulate`` by default —
+App state (configs, run directories) lives under ``~/.fiscus/simulate`` by default —
 derived artifacts only, never inside the repo. Cross-platform: all paths via
 ``pathlib.Path`` and ``Path.home()``; no drive-letter literals.
 """
@@ -14,9 +14,9 @@ from .. import __version__
 
 
 def default_state_dir() -> Path:
-    """Return the app-state directory (``$FISCUS_SIMULATE_HOME`` or ``~/.fiscus_simulate``)."""
+    """Return the app-state directory (``$FISCUS_SIMULATE_HOME`` or ``~/.fiscus/simulate``)."""
     env = os.environ.get("FISCUS_SIMULATE_HOME")
-    return Path(env) if env else Path.home() / ".fiscus_simulate"
+    return Path(env) if env else Path.home() / ".fiscus" / "simulate"
 
 
 @dataclass
