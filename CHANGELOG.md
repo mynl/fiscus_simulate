@@ -3,6 +3,11 @@
 All notable changes to `fiscus_simulate`. Semantic versioning from 1.0.0; each build
 stage bumps the minor. Newest first.
 
+## 1.9.2 — 2026-09-01
+
+Navbar brand block matches the family (wordmark with grey suffix) and gains the kicker
+"ensure your vision".
+
 ## 1.9.1 — 2026-08-31
 
 App home is `~/.fiscus/simulate/` (was `~/.fiscus_simulate`); `$FISCUS_SIMULATE_HOME` still

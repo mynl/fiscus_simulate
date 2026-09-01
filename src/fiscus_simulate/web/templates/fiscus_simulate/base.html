@@ -81,7 +81,11 @@
   </script>
   <style>
     body { background:#fff; }
-    .navbar-brand img { height:32px; width:auto; margin-right:.5rem; }
+    .navbar-brand img { height:42px; width:auto; }
+    .brand-name { font-weight:700; color:#212529; line-height:1; font-size:1.15rem; }
+    .brand-suffix { color:#6c757d; }
+    .brand-kicker { color:#6c757d; font-size:.55rem; font-family:monospace;
+                    letter-spacing:.3em; margin-top:2px; }
     .navbar { border-bottom:1px solid #eee; }
     .container-fluid.main { max-width:1600px; margin:0 auto; }
     .model-note { font-size:.85rem; }
@@ -96,7 +100,10 @@
     <div class="container-fluid main">
       <a class="navbar-brand d-flex align-items-center" href="{{ url_for('simulate.dashboard') }}">
         <img src="{{ url_for('static', filename='fiscus_simulate/branding/logo-192.png') }}" alt="fiscus_simulate">
-        <span class="fw-semibold">fiscus<span class="text-secondary">_simulate</span></span>
+        <div class="d-flex flex-column align-items-center text-center px-3">
+          <div class="brand-name">fiscus<span class="brand-suffix">_simulate</span></div>
+          <div class="brand-kicker">ensure your vision</div>
+        </div>
       </a>
       <div class="d-flex align-items-center ms-auto gap-2">
         <a class="nav-link active" href="{{ url_for('simulate.dashboard') }}">Dashboard</a>
