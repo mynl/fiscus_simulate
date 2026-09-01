@@ -3,7 +3,7 @@
 The Python side builds JSON-serializable ``data`` (uPlot's ``[xs, ys...]`` form) and a
 ``spec`` describing series/type/formatting; the JS helper ``fiscusChart`` (defined once in
 ``base.html``, after the uPlot CDN load) turns them into a chart, adding the hover/axis
-formatter *functions* that can't ride in JSON. This mirrors ``fiscus_project``'s inline
+formatter *functions* that can't ride in JSON. This mirrors ``fiscus_ledger``'s inline
 ``new uPlot(...)`` pattern. Charts are presentation-only — fed from persisted summaries.
 """
 from __future__ import annotations

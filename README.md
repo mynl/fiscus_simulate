@@ -1,7 +1,7 @@
 # fiscus_simulate
 
 Retirement cash-flow and asset Monte-Carlo simulation for a two-person household.
-Part of the Fiscus family; **stands alone** (`fiscus_project` may import it, never the
+Part of the Fiscus family; **stands alone** (`fiscus_ledger` may import it, never the
 reverse). A vectorized NumPy engine surrounded by typed configuration, persistence, and
 an optional Flask web layer — the engine is the core asset and never imports Flask.
 

@@ -37,7 +37,7 @@ presentation-ready data — **the web never touches the engine directly.**
 | `preview.py` | fast pre-run preview |
 | `web/` | `app.py` factory + `routes.py` / `views.py` / `state.py` / `charts.py` / `configs.py` / `grid.py` / `jobs.py`, templates, static |
 
-The `web/` subpackage shape matches `fiscus_project` — that question is settled by the code; don't
+The `web/` subpackage shape matches `fiscus_ledger` — that question is settled by the code; don't
 reopen it.
 
 **Naming:** subclasses use the `Base<Kind>` prefix form so a subclass sorts with its base; full

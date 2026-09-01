@@ -4,8 +4,8 @@ A two-person-household retirement simulator: a vectorized NumPy engine (Stage 2+
 surrounded by typed configuration, persistence, and an optional Flask web layer. The
 engine is the core asset and must never import Flask.
 
-This package stands alone. ``fiscus_project`` may import it; it never imports
-``fiscus_project``.
+This package stands alone. ``fiscus_ledger`` may import it; it never imports
+``fiscus_ledger``.
 """
 from __future__ import annotations
 
