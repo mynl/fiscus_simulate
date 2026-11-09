@@ -3,6 +3,20 @@
 All notable changes to `fiscus_simulate`. Semantic versioning from 1.0.0; each build
 stage bumps the minor. Newest first.
 
+## [2.0.0a1] - 2026-11-09
+
+### Changed
+- **Breaking: paths follow the family root `$FISCUS_ROOT`.** Unset, it is the synthetic test
+  tree `~/.fiscus-test`; the real tree `~/.fiscus` is used only when a launcher sets
+  `FISCUS_ROOT` to it. Run directories are under `<root>/simulate`.
+- Saved scenarios live in `<root>/settings/simulate`, held apart from the state dir, so they no
+  longer depend on the `configs` junction. `AppState` takes the folder as `configs_dir`.
+- `__version__` matches `pyproject.toml` again (it had stayed at 1.9.0).
+
+### Added
+- `tests/conftest.py` points `FISCUS_ROOT` at a temporary folder for every test;
+  `tests/test_root.py` checks the unset default and that no other code builds a `.fiscus` path.
+
 ## 1.9.2 — 2026-09-01
 
 Navbar brand block matches the family (wordmark with grey suffix) and gains the kicker

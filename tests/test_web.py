@@ -7,7 +7,7 @@ from fiscus_simulate.web.state import AppState
 
 
 def test_app_boots_and_serves_dashboard(tmp_path):
-    app = create_app(AppState(state_dir=tmp_path))
+    app = create_app(AppState(state_dir=tmp_path, configs_dir=tmp_path / "configs"))
     app.config.update(TESTING=True)
     client = app.test_client()
     resp = client.get("/")
@@ -18,7 +18,7 @@ def test_app_boots_and_serves_dashboard(tmp_path):
 
 
 def test_favicon_asset_served(tmp_path):
-    app = create_app(AppState(state_dir=tmp_path))
+    app = create_app(AppState(state_dir=tmp_path, configs_dir=tmp_path / "configs"))
     client = app.test_client()
     resp = client.get("/static/fiscus_simulate/branding/favicon.ico")
     assert resp.status_code == 200

@@ -14,7 +14,7 @@ from fiscus_simulate.web.state import AppState
 
 @pytest.fixture
 def client(tmp_path):
-    app = create_app(AppState(state_dir=tmp_path))
+    app = create_app(AppState(state_dir=tmp_path, configs_dir=tmp_path / "configs"))
     app.config.update(TESTING=True)
     return app.test_client()
 

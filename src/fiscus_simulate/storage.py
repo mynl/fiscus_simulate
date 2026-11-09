@@ -31,10 +31,15 @@ _DEP_PACKAGES = ("numpy", "pandas", "pyarrow", "pydantic")
 _PINNED_MARKER = "PINNED"
 
 
+def fiscus_root() -> Path:
+    """Family root: $FISCUS_ROOT, else the synthetic test tree ~/.fiscus-test."""
+    return Path(os.environ.get("FISCUS_ROOT") or Path.home() / ".fiscus-test").expanduser()
+
+
 def default_runs_dir() -> Path:
-    """App-state run directory (`$FISCUS_SIMULATE_HOME` or `~/.fiscus/simulate`)."""
+    """App-state run directory (`$FISCUS_SIMULATE_HOME` or `fiscus_root() / "simulate"`)."""
     home = os.environ.get("FISCUS_SIMULATE_HOME")
-    base = Path(home) if home else Path.home() / ".fiscus" / "simulate"
+    base = Path(home) if home else fiscus_root() / "simulate"
     return base / "simulation_runs"
 
 

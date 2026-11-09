@@ -67,9 +67,11 @@ percentile trajectories, failure tables, and chart-ready aggregates only, plus o
 path samples. Cache controls: max age, max storage, pin/protect, delete-details-keep-summary,
 auto-clean incompletes.
 
-Saved scenario configs live under `<state_dir>/configs/`. On DOOB that directory is a junction
-into the settings tree (`~/.fiscus/settings/simulate`) so the authored scenario documents are
-backed up; the code treats it as a plain directory and must keep working when it is one (VPS).
+Run directories sit in the state dir, `<root>/simulate` (`$FISCUS_SIMULATE_HOME`), where `<root>`
+is `$FISCUS_ROOT`, unset meaning the synthetic test tree `~/.fiscus-test`. Saved scenario configs
+are authored documents, so they live apart from it, in `<root>/settings/simulate`
+(`AppState.configs_dir`, its own argument so tests pass a temporary folder). On DOOB `settings` is
+a junction to the backed-up settings tree; the code treats every folder as a plain directory.
 
 ## Deltas from house rules
 
